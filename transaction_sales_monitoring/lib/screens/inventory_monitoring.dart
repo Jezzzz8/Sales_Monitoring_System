@@ -345,7 +345,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<String>(
-                    value: selectedItemType,
+                    initialValue: selectedItemType,
                     decoration: const InputDecoration(
                       labelText: 'Item Type *',
                       border: OutlineInputBorder(),
@@ -389,7 +389,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                   const SizedBox(height: 12),
 
                   DropdownButtonFormField<String>(
-                    value: availableCategories.isNotEmpty && categoryController.text.isNotEmpty 
+                    initialValue: availableCategories.isNotEmpty && categoryController.text.isNotEmpty 
                         ? categoryController.text 
                         : null,
                     decoration: const InputDecoration(
@@ -413,7 +413,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                   const SizedBox(height: 12),
 
                   DropdownButtonFormField<String>(
-                    value: availableUnits.isNotEmpty && unitController.text.isNotEmpty 
+                    initialValue: availableUnits.isNotEmpty && unitController.text.isNotEmpty 
                         ? unitController.text 
                         : null,
                     decoration: const InputDecoration(
@@ -498,7 +498,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                   const SizedBox(height: 12),
 
                   DropdownButtonFormField<String>(
-                    value: selectedStatus,
+                    initialValue: selectedStatus,
                     decoration: const InputDecoration(
                       labelText: 'Status',
                       border: OutlineInputBorder(),
@@ -812,7 +812,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                   const SizedBox(height: 12),
 
                   DropdownButtonFormField<String>(
-                    value: selectedStatus,
+                    initialValue: selectedStatus,
                     decoration: const InputDecoration(
                       labelText: 'Status',
                       border: OutlineInputBorder(),
@@ -1182,7 +1182,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                     children: [
                                       Expanded(
                                         child: DropdownButtonFormField<String>(
-                                          value: _selectedItemType,
+                                          initialValue: _selectedItemType,
                                           decoration: const InputDecoration(
                                             labelText: 'Item Type',
                                             border: OutlineInputBorder(),
@@ -1204,7 +1204,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                       if (!isMobile)
                                         Expanded(
                                           child: DropdownButtonFormField<String>(
-                                            value: _selectedStatus,
+                                            initialValue: _selectedStatus,
                                             decoration: const InputDecoration(
                                               labelText: 'Status',
                                               border: OutlineInputBorder(),
@@ -1229,7 +1229,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                       children: [
                                         const SizedBox(height: 12),
                                         DropdownButtonFormField<String>(
-                                          value: _selectedStatus,
+                                          initialValue: _selectedStatus,
                                           decoration: const InputDecoration(
                                             labelText: 'Status',
                                             border: OutlineInputBorder(),
@@ -1760,7 +1760,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                                         ),
                                                       ),
                                                       Text(
-                                                        '${totalStock.toStringAsFixed(0)}',
+                                                        totalStock.toStringAsFixed(0),
                                                         style: TextStyle(
                                                           fontWeight: FontWeight.bold,
                                                           fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),

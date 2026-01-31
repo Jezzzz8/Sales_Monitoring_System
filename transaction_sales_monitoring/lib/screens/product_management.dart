@@ -358,7 +358,7 @@ class _ProductManagementState extends State<ProductManagement> {
                   const SizedBox(height: 12),
 
                   DropdownButtonFormField<String>(
-                    value: selectedCategory,
+                    initialValue: selectedCategory,
                     decoration: const InputDecoration(
                       labelText: 'Category *',
                       border: OutlineInputBorder(),
@@ -708,7 +708,7 @@ class _ProductManagementState extends State<ProductManagement> {
                   const SizedBox(height: 12),
 
                   DropdownButtonFormField<String>(
-                    value: selectedCategory,
+                    initialValue: selectedCategory,
                     decoration: const InputDecoration(
                       labelText: 'Category *',
                       border: OutlineInputBorder(),

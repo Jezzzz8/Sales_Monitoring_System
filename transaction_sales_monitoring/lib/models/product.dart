@@ -64,7 +64,7 @@ class Product {
     return Product(
       id: id ?? this.id,
       name: name ?? this.name,
-      categoryId: category ?? this.categoryId,
+      categoryId: category ?? categoryId,
       description: description ?? this.description,
       price: price ?? this.price,
       unit: unit ?? this.unit,
