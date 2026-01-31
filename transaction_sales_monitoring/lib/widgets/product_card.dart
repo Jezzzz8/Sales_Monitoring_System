@@ -18,7 +18,6 @@ class ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = Responsive.isMobile(context);
     final cardPadding = Responsive.getCardPadding(context);
     
     return Card(

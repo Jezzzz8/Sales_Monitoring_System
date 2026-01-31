@@ -85,16 +85,21 @@ class Responsive {
     return orientation == Orientation.landscape ? 1.1 : 1.0;
   }
 
-  static double getCardHeight(BuildContext context, {double multiplier = 1.0}) {
-    final orientation = MediaQuery.of(context).orientation;
+  static double getCardHeight(BuildContext context, {int itemCount = 1, double multiplier = 1.0}) {
+    final isMobileVal = isMobile(context);
+    final isTabletVal = isTablet(context);
     
-    if (isMobile(context)) {
-      return (orientation == Orientation.landscape ? 120 : 150) * multiplier;
+    if (isMobileVal) {
+      if (itemCount <= 3) {
+        return 100; // Taller for horizontal layout
+      } else {
+        return getCardWidth(context, itemCount: itemCount) * 1.0; // Square for grid
+      }
+    } else if (isTabletVal) {
+      return getCardWidth(context, itemCount: itemCount) * 0.9;
+    } else {
+      return getCardWidth(context, itemCount: itemCount) * 0.8;
     }
-    if (isTablet(context)) {
-      return (orientation == Orientation.landscape ? 150 : 180) * multiplier;
-    }
-    return (orientation == Orientation.landscape ? 180 : 200) * multiplier;
   }
 
   // Spacing and padding with orientation adjustments
@@ -380,5 +385,159 @@ class Responsive {
     if (isMobile(context)) return 14;
     if (isTablet(context)) return 16;
     return 18;
+  }
+
+  // =========== NEW METHODS ===========
+
+  static EdgeInsets getSectionPadding(BuildContext context) {
+    final isMobileVal = isMobile(context);
+    final isTabletVal = isTablet(context);
+    final padding = getPaddingSize(context);
+    
+    if (isMobileVal) {
+      return EdgeInsets.symmetric(horizontal: padding, vertical: padding * 0.5);
+    } else if (isTabletVal) {
+      return EdgeInsets.symmetric(horizontal: padding, vertical: padding * 0.8);
+    } else {
+      return EdgeInsets.all(padding);
+    }
+  }
+
+  static double getCardSpacing(BuildContext context) {
+    final isMobileVal = isMobile(context);
+    final isTabletVal = isTablet(context);
+    
+    if (isMobileVal) {
+      return 8.0;
+    } else if (isTabletVal) {
+      return 12.0;
+    } else {
+      return 16.0;
+    }
+  }
+
+  static double getGroupSpacing(BuildContext context) {
+    final isMobileVal = isMobile(context);
+    final isTabletVal = isTablet(context);
+    
+    if (isMobileVal) {
+      return 16.0;
+    } else if (isTabletVal) {
+      return 20.0;
+    } else {
+      return 24.0;
+    }
+  }
+
+  // Single getCardWidth method
+  static double getCardWidth(BuildContext context, {int itemCount = 1, int itemsPerRow = 1}) {
+    final width = MediaQuery.of(context).size.width;
+    final screenPadding = getScreenPadding(context);
+    final cardSpacing = getCardSpacing(context);
+    final availableWidth = width - screenPadding.left - screenPadding.right;
+    
+    final isMobileVal = isMobile(context);
+    final isTabletVal = isTablet(context);
+    final isDesktopVal = isDesktop(context);
+    
+    final effectiveItemsPerRow = itemsPerRow > 0 ? itemsPerRow : 
+      (itemCount <= 3 && isMobileVal) ? itemCount : 
+      (itemCount <= 4 && isTabletVal) ? itemCount :
+      (itemCount <= 5 && isDesktopVal) ? itemCount : 
+      isMobileVal ? 2 : isTabletVal ? 3 : 4;
+    
+    final totalSpacing = (effectiveItemsPerRow - 1) * cardSpacing;
+    return (availableWidth - totalSpacing) / effectiveItemsPerRow;
+  }
+
+  // Simplified getCardHeight method
+  static double getCardHeightForGrid(BuildContext context, {int itemCount = 1}) {
+    final isMobileVal = isMobile(context);
+    final cardWidth = getCardWidth(context, itemCount: itemCount);
+    
+    if (isMobileVal) {
+      if (itemCount <= 3) {
+        return 100.0; // Fixed height for horizontal layout
+      } else {
+        return cardWidth; // Square for grid layout
+      }
+    } else {
+      return cardWidth * 0.8; // Slightly shorter than wide for desktop/tablet
+    }
+  }
+
+  // Add a method to calculate proper row layout
+  static Widget buildResponsiveCardGrid({
+    required BuildContext context,
+    required List<Widget> cards,
+    required String title,
+    Color? titleColor,
+    bool centerTitle = true,
+  }) {
+    final isMobileVal = isMobile(context);
+    final isTabletVal = isTablet(context);
+    final itemCount = cards.length;
+    
+    return Column(
+      crossAxisAlignment: centerTitle ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(bottom: getGroupSpacing(context) * 0.5),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: getSubtitleFontSize(context),
+              fontWeight: FontWeight.bold,
+              color: titleColor ?? Theme.of(context).primaryColor,
+            ),
+          ),
+        ),
+        
+        if (isMobileVal && itemCount <= 3)
+          // Mobile horizontal layout for 1-3 items
+          Container(
+            height: getCardHeightForGrid(context, itemCount: itemCount),
+            padding: EdgeInsets.symmetric(horizontal: getSectionPadding(context).horizontal),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: cards.asMap().entries.map((entry) {
+                final index = entry.key;
+                final card = entry.value;
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      left: index == 0 ? 0 : getCardSpacing(context) * 0.5,
+                      right: index == itemCount - 1 ? 0 : getCardSpacing(context) * 0.5,
+                    ),
+                    child: card,
+                  ),
+                );
+              }).toList(),
+            ),
+          )
+        else
+          // Grid layout for 4+ items or desktop/tablet
+          Container(
+            padding: getSectionPadding(context),
+            child: GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: isMobileVal 
+                ? (itemCount <= 3 ? itemCount : 2) // 2 columns for 4+ items on mobile
+                : isTabletVal 
+                  ? (itemCount <= 4 ? itemCount : 3) // 3 columns max on tablet
+                  : (itemCount <= 5 ? itemCount : 4), // 4 columns max on desktop
+              crossAxisSpacing: getCardSpacing(context),
+              mainAxisSpacing: getCardSpacing(context),
+              childAspectRatio: isMobileVal && itemCount <= 3 
+                ? getCardWidth(context, itemCount: itemCount) / getCardHeightForGrid(context, itemCount: itemCount)
+                : 1.0,
+              children: cards,
+            ),
+          ),
+        
+        SizedBox(height: getGroupSpacing(context)),
+      ],
+    );
   }
 }

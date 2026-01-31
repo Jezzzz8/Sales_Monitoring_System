@@ -1,22 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:transaction_sales_monitoring/services/auth_service.dart';
+import '../models/user_model.dart';
 
-class Sidebar extends StatelessWidget {
+class AdminSidebar extends StatefulWidget {
   final int selectedIndex;
   final Function(int) onItemSelected;
   final bool isCollapsed;
   final Function()? onToggle;
+  final User currentUser;
+  final Color primaryColor;
 
-  const Sidebar({
+  const AdminSidebar({
     super.key,
     required this.selectedIndex,
     required this.onItemSelected,
     this.isCollapsed = false,
     this.onToggle,
+    required this.currentUser,
+    required this.primaryColor,
   });
 
   @override
+  State<AdminSidebar> createState() => _AdminSidebarState();
+}
+
+class _AdminSidebarState extends State<AdminSidebar> {
+  @override
   Widget build(BuildContext context) {
-    if (isCollapsed) {
+    if (widget.isCollapsed) {
       return Container(
         width: 70,
         color: Colors.white,
@@ -25,9 +36,9 @@ class Sidebar extends StatelessWidget {
             // Header (Collapsed)
             Container(
               padding: const EdgeInsets.all(16),
-              color: Colors.deepOrange,
-              child: const Icon(
-                Icons.restaurant,
+              color: widget.primaryColor,
+              child: Icon(
+                widget.currentUser.roleIcon,
                 color: Colors.white,
               ),
             ),
@@ -39,43 +50,50 @@ class Sidebar extends StatelessWidget {
                   _buildCollapsedNavItem(
                     index: 0,
                     icon: Icons.dashboard,
-                    isSelected: selectedIndex == 0,
+                    isSelected: widget.selectedIndex == 0,
                   ),
                   _buildCollapsedNavItem(
                     index: 1,
                     icon: Icons.point_of_sale,
-                    isSelected: selectedIndex == 1,
+                    isSelected: widget.selectedIndex == 1,
                   ),
                   _buildCollapsedNavItem(
                     index: 2,
                     icon: Icons.receipt_long,
-                    isSelected: selectedIndex == 2,
+                    isSelected: widget.selectedIndex == 2,
                   ),
                   _buildCollapsedNavItem(
                     index: 3,
                     icon: Icons.trending_up,
-                    isSelected: selectedIndex == 3,
+                    isSelected: widget.selectedIndex == 3,
                   ),
                   _buildCollapsedNavItem(
                     index: 4,
                     icon: Icons.inventory,
-                    isSelected: selectedIndex == 4,
+                    isSelected: widget.selectedIndex == 4,
                   ),
                   _buildCollapsedNavItem(
                     index: 5,
                     icon: Icons.restaurant_menu,
-                    isSelected: selectedIndex == 5,
+                    isSelected: widget.selectedIndex == 5,
                   ),
                   const SizedBox(height: 16),
+                  // Admin only items
+                  if (widget.currentUser.role == UserRole.admin)
+                    _buildCollapsedNavItem(
+                      index: 8,
+                      icon: Icons.people,
+                      isSelected: widget.selectedIndex == 8,
+                    ),
                   _buildCollapsedNavItem(
                     index: 6,
                     icon: Icons.settings,
-                    isSelected: selectedIndex == 6,
+                    isSelected: widget.selectedIndex == 6,
                   ),
                   _buildCollapsedNavItem(
                     index: 7,
                     icon: Icons.notifications,
-                    isSelected: selectedIndex == 7,
+                    isSelected: widget.selectedIndex == 7,
                   ),
                 ],
               ),
@@ -85,8 +103,30 @@ class Sidebar extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               child: IconButton(
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/');
+                onPressed: () async {
+                  await showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Logout'),
+                      content: const Text('Are you sure you want to logout?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            AuthService.logout();
+                            Navigator.pushReplacementNamed(context, '/login');
+                          },
+                          child: const Text(
+                            'Logout',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
                 },
                 icon: const Icon(Icons.logout, color: Colors.red, size: 24),
                 tooltip: 'Logout',
@@ -103,31 +143,41 @@ class Sidebar extends StatelessWidget {
       color: Colors.white,
       child: Column(
         children: [
-          // Header
+          // Header with user info
           Container(
             padding: const EdgeInsets.all(20),
-            color: Colors.deepOrange,
+            color: widget.primaryColor,
             child: Column(
               children: [
-                const Icon(
-                  Icons.restaurant,
+                Icon(
+                  widget.currentUser.roleIcon,
                   size: 50,
                   color: Colors.white,
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  "Gene's Lechon",
-                  style: TextStyle(
+                Text(
+                  widget.currentUser.fullName,
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
+                  textAlign: TextAlign.center,
                 ),
-                const Text(
-                  "Admin System",
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white70,
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    widget.currentUser.roleDisplayName,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
@@ -143,7 +193,7 @@ class Sidebar extends StatelessWidget {
                   index: 0,
                   icon: Icons.dashboard,
                   label: 'Dashboard',
-                  isSelected: selectedIndex == 0,
+                  isSelected: widget.selectedIndex == 0,
                 ),
                 const Divider(height: 1),
                 
@@ -163,19 +213,19 @@ class Sidebar extends StatelessWidget {
                   index: 1,
                   icon: Icons.point_of_sale,
                   label: 'POS Transaction',
-                  isSelected: selectedIndex == 1,
+                  isSelected: widget.selectedIndex == 1,
                 ),
                 _buildNavItem(
                   index: 2,
                   icon: Icons.receipt_long,
                   label: 'Transaction History',
-                  isSelected: selectedIndex == 2,
+                  isSelected: widget.selectedIndex == 2,
                 ),
                 _buildNavItem(
                   index: 3,
                   icon: Icons.trending_up,
                   label: 'Sales Monitoring',
-                  isSelected: selectedIndex == 3,
+                  isSelected: widget.selectedIndex == 3,
                 ),
                 const Divider(height: 1),
 
@@ -195,15 +245,37 @@ class Sidebar extends StatelessWidget {
                   index: 4,
                   icon: Icons.inventory,
                   label: 'Inventory Monitoring',
-                  isSelected: selectedIndex == 4,
+                  isSelected: widget.selectedIndex == 4,
                 ),
                 _buildNavItem(
                   index: 5,
                   icon: Icons.restaurant_menu,
                   label: 'Product Management',
-                  isSelected: selectedIndex == 5,
+                  isSelected: widget.selectedIndex == 5,
                 ),
                 const Divider(height: 1),
+
+                // Admin Only Section
+                if (widget.currentUser.role == UserRole.admin) ...[
+                  const Padding(
+                    padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
+                    child: Text(
+                      'ADMINISTRATION',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ),
+                  _buildNavItem(
+                    index: 8,
+                    icon: Icons.people,
+                    label: 'User Management',
+                    isSelected: widget.selectedIndex == 8,
+                  ),
+                  const Divider(height: 1),
+                ],
 
                 // System Section
                 const Padding(
@@ -221,13 +293,13 @@ class Sidebar extends StatelessWidget {
                   index: 6,
                   icon: Icons.settings,
                   label: 'Settings',
-                  isSelected: selectedIndex == 6,
+                  isSelected: widget.selectedIndex == 6,
                 ),
                 _buildNavItem(
                   index: 7,
                   icon: Icons.notifications,
                   label: 'Notifications',
-                  isSelected: selectedIndex == 7,
+                  isSelected: widget.selectedIndex == 7,
                   showBadge: true,
                 ),
               ],
@@ -238,8 +310,30 @@ class Sidebar extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             child: ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pushReplacementNamed(context, '/');
+              onPressed: () async {
+                await showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Logout'),
+                    content: const Text('Are you sure you want to logout?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          AuthService.logout();
+                          Navigator.pushReplacementNamed(context, '/login');
+                        },
+                        child: const Text(
+                          'Logout',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
@@ -267,7 +361,7 @@ class Sidebar extends StatelessWidget {
         children: [
           Icon(
             icon,
-            color: isSelected ? Colors.deepOrange : Colors.grey,
+            color: isSelected ? widget.primaryColor : Colors.grey,
           ),
           if (showBadge && index == 7)
             Positioned(
@@ -288,12 +382,12 @@ class Sidebar extends StatelessWidget {
         label,
         style: TextStyle(
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          color: isSelected ? Colors.deepOrange : Colors.black87,
+          color: isSelected ? widget.primaryColor : Colors.black87,
         ),
       ),
-      tileColor: isSelected ? Colors.deepOrange.withOpacity(0.1) : null,
+      tileColor: isSelected ? widget.primaryColor.withOpacity(0.1) : null,
       selected: isSelected,
-      onTap: () => onItemSelected(index),
+      onTap: () => widget.onItemSelected(index),
     );
   }
 
@@ -305,15 +399,15 @@ class Sidebar extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isSelected ? Colors.deepOrange.withOpacity(0.2) : null,
+        color: isSelected ? widget.primaryColor.withOpacity(0.2) : null,
         borderRadius: BorderRadius.circular(8),
       ),
       child: IconButton(
         icon: Icon(
           icon,
-          color: isSelected ? Colors.deepOrange : Colors.grey,
+          color: isSelected ? widget.primaryColor : Colors.grey,
         ),
-        onPressed: () => onItemSelected(index),
+        onPressed: () => widget.onItemSelected(index),
         tooltip: _getTooltip(index),
       ),
     );
@@ -329,6 +423,7 @@ class Sidebar extends StatelessWidget {
       case 5: return 'Product Management';
       case 6: return 'Settings';
       case 7: return 'Notifications';
+      case 8: return 'User Management';
       default: return '';
     }
   }

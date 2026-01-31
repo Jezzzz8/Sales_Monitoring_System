@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/transaction.dart';
-import '../widgets/transaction_card.dart';
 import '../utils/responsive.dart';
+import '../services/settings_service.dart';
+import '../models/settings_model.dart';
 
 class TransactionMonitoring extends StatefulWidget {
   const TransactionMonitoring({super.key});
@@ -11,6 +12,10 @@ class TransactionMonitoring extends StatefulWidget {
 }
 
 class _TransactionMonitoringState extends State<TransactionMonitoring> {
+  // Settings integration
+  AppSettings? _settings;
+  bool _isLoadingSettings = true;
+  
   final List<TransactionModel> _transactions = [
     TransactionModel(
       id: '1',
@@ -88,7 +93,6 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
       notes: 'Family gathering',
       createdAt: DateTime.now().subtract(const Duration(days: 1)),
     ),
-    // Add more sample data for better stats
     TransactionModel(
       id: '4',
       transactionNumber: 'TRX-004',
@@ -149,7 +153,27 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
   String _selectedPaymentMethod = 'All';
   final TextEditingController _searchController = TextEditingController();
 
-  // Updated stats to include more comprehensive data
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    setState(() => _isLoadingSettings = true);
+    try {
+      _settings = await SettingsService.loadSettings();
+    } catch (e) {
+      print('Error loading settings in transactions: $e');
+      _settings = AppSettings();
+    }
+    setState(() => _isLoadingSettings = false);
+  }
+
+  Color _getPrimaryColor() {
+    return _settings?.primaryColorValue ?? Colors.deepOrange;
+  }
+
   double get _todaySales {
     return _transactions
         .where((t) => t.transactionDate.day == DateTime.now().day)
@@ -182,10 +206,6 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
         .length;
   }
 
-  int get _totalTransactions {
-    return _transactions.length;
-  }
-
   List<TransactionModel> get _filteredTransactions {
     return _transactions.where((transaction) {
       final matchesDate = transaction.transactionDate.day == _selectedDate.day;
@@ -201,8 +221,12 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingSettings) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    
+    final primaryColor = _getPrimaryColor();
     final isMobile = Responsive.isMobile(context);
-    final isTablet = Responsive.isTablet(context);
     
     return Scaffold(
       body: LayoutBuilder(
@@ -216,7 +240,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header with Stats
+                  // Header Card
                   Container(
                     constraints: BoxConstraints(
                       minHeight: 150,
@@ -229,13 +253,19 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              'TRANSACTION MONITORING',
-                              style: TextStyle(
-                                fontSize: Responsive.getTitleFontSize(context),
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
-                              ),
+                            Row(
+                              children: [
+                                Icon(Icons.history, color: primaryColor),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'TRANSACTION HISTORY',
+                                  style: TextStyle(
+                                    fontSize: Responsive.getTitleFontSize(context),
+                                    fontWeight: FontWeight.bold,
+                                    color: primaryColor,
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 8),
                             Text(
@@ -248,14 +278,12 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 16),
-                            GridView.count(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              crossAxisCount: isMobile ? 2 : 4,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: isMobile ? 1.5 : 1.8,
-                              children: [
+                            Responsive.buildResponsiveCardGrid(
+                              context: context,
+                              title: 'TRANSACTION STATS',
+                              titleColor: primaryColor,
+                              centerTitle: true,
+                              cards: [
                                 _buildStatCard(
                                   "Today's Sales",
                                   "₱${_todaySales.toStringAsFixed(2)}",
@@ -294,7 +322,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
 
                   const SizedBox(height: 16),
 
-                  // Filters
+                  // Filters Card
                   Container(
                     constraints: BoxConstraints(
                       minHeight: isMobile ? 300 : 150,
@@ -308,11 +336,11 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'FILTERS',
+                              'FILTER TRANSACTIONS',
                               style: TextStyle(
                                 fontSize: Responsive.getSubtitleFontSize(context),
                                 fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
+                                color: primaryColor,
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -320,75 +348,65 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
                             if (isMobile)
                               Column(
                                 children: [
-                                  TextField(
-                                    controller: _searchController,
-                                    decoration: InputDecoration(
-                                      hintText: 'Search by customer or transaction #',
-                                      prefixIcon: const Icon(Icons.search),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      suffixIcon: _searchController.text.isNotEmpty
-                                          ? IconButton(
-                                              icon: const Icon(Icons.clear),
-                                              onPressed: () {
-                                                setState(() {
-                                                  _searchController.clear();
-                                                });
-                                              },
-                                            )
-                                          : null,
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      color: Colors.grey.shade100,
                                     ),
-                                    onChanged: (value) => setState(() {}),
+                                    child: TextField(
+                                      controller: _searchController,
+                                      decoration: InputDecoration(
+                                        hintText: 'Search by customer or transaction #',
+                                        prefixIcon: Icon(Icons.search, color: primaryColor),
+                                        border: InputBorder.none,
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                      ),
+                                      onChanged: (value) => setState(() {}),
+                                    ),
                                   ),
                                   const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          decoration: BoxDecoration(
-                                            border: Border.all(color: Colors.grey.shade300),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              const Icon(Icons.calendar_today, size: 20, color: Colors.deepOrange),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
-                                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                                ),
-                                              ),
-                                              IconButton(
-                                                icon: const Icon(Icons.arrow_drop_down, size: 20),
-                                                onPressed: () async {
-                                                  final picked = await showDatePicker(
-                                                    context: context,
-                                                    initialDate: _selectedDate,
-                                                    firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                                                    lastDate: DateTime.now(),
-                                                  );
-                                                  if (picked != null) {
-                                                    setState(() {
-                                                      _selectedDate = picked;
-                                                    });
-                                                  }
-                                                },
-                                              ),
-                                            ],
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: Colors.grey.shade300),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.calendar_today, size: 20, color: primaryColor),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                        IconButton(
+                                          icon: const Icon(Icons.arrow_drop_down, size: 20),
+                                          onPressed: () async {
+                                            final picked = await showDatePicker(
+                                              context: context,
+                                              initialDate: _selectedDate,
+                                              firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                                              lastDate: DateTime.now(),
+                                            );
+                                            if (picked != null) {
+                                              setState(() {
+                                                _selectedDate = picked;
+                                              });
+                                            }
+                                          },
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                   const SizedBox(height: 12),
                                   DropdownButtonFormField<String>(
-                                    initialValue: _selectedStatus,
-                                    decoration: const InputDecoration(
+                                    value: _selectedStatus,
+                                    decoration: InputDecoration(
                                       labelText: 'Status',
                                       border: OutlineInputBorder(),
+                                      prefixIcon: Icon(Icons.stairs, color: primaryColor),
                                     ),
                                     items: ['All', 'Completed', 'Pending', 'Cancelled']
                                         .map((status) => DropdownMenuItem(
@@ -404,10 +422,11 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
                                   ),
                                   const SizedBox(height: 12),
                                   DropdownButtonFormField<String>(
-                                    initialValue: _selectedPaymentMethod,
-                                    decoration: const InputDecoration(
+                                    value: _selectedPaymentMethod,
+                                    decoration: InputDecoration(
                                       labelText: 'Payment Method',
                                       border: OutlineInputBorder(),
+                                      prefixIcon: Icon(Icons.payment, color: primaryColor),
                                     ),
                                     items: ['All', 'Cash', 'GCash', 'Bank Transfer', 'Credit Card']
                                         .map((method) => DropdownMenuItem(
@@ -428,29 +447,24 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
                                 children: [
                                   Expanded(
                                     flex: 3,
-                                    child: TextField(
-                                      controller: _searchController,
-                                      decoration: InputDecoration(
-                                        hintText: 'Search by customer name or transaction number...',
-                                        prefixIcon: const Icon(Icons.search, color: Colors.deepOrange),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        suffixIcon: _searchController.text.isNotEmpty
-                                            ? IconButton(
-                                                icon: const Icon(Icons.clear),
-                                                onPressed: () {
-                                                  setState(() {
-                                                    _searchController.clear();
-                                                  });
-                                                },
-                                              )
-                                            : null,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        color: Colors.grey.shade100,
                                       ),
-                                      onChanged: (value) => setState(() {}),
+                                      child: TextField(
+                                        controller: _searchController,
+                                        decoration: InputDecoration(
+                                          hintText: 'Search by customer name or transaction number...',
+                                          prefixIcon: Icon(Icons.search, color: primaryColor),
+                                          border: InputBorder.none,
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                        ),
+                                        onChanged: (value) => setState(() {}),
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(width: 16),
+                                  SizedBox(width: Responsive.getHorizontalSpacing(context).width), // FIX: Use responsive spacing
                                   Expanded(
                                     flex: 2,
                                     child: Container(
@@ -461,7 +475,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
                                       ),
                                       child: Row(
                                         children: [
-                                          const Icon(Icons.calendar_today, size: 20, color: Colors.deepOrange),
+                                          Icon(Icons.calendar_today, size: 20, color: primaryColor),
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child: Text(
@@ -489,19 +503,25 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 16),
+                                  SizedBox(width: Responsive.getHorizontalSpacing(context).width), // FIX: Use responsive spacing
                                   Expanded(
                                     flex: 2,
                                     child: DropdownButtonFormField<String>(
-                                      initialValue: _selectedStatus,
-                                      decoration: const InputDecoration(
+                                      value: _selectedStatus,
+                                      isExpanded: true, // FIX: Added isExpanded
+                                      decoration: InputDecoration(
                                         labelText: 'Status',
-                                        border: OutlineInputBorder(),
+                                        border: const OutlineInputBorder(),
+                                        prefixIcon: Icon(Icons.stairs, color: primaryColor),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                                       ),
                                       items: ['All', 'Completed', 'Pending', 'Cancelled']
                                           .map((status) => DropdownMenuItem(
                                                 value: status,
-                                                child: Text(status),
+                                                child: Text(
+                                                  status,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
                                               ))
                                           .toList(),
                                       onChanged: (value) {
@@ -511,19 +531,25 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
                                       },
                                     ),
                                   ),
-                                  const SizedBox(width: 16),
+                                  SizedBox(width: Responsive.getHorizontalSpacing(context).width), // FIX: Use responsive spacing
                                   Expanded(
                                     flex: 2,
                                     child: DropdownButtonFormField<String>(
-                                      initialValue: _selectedPaymentMethod,
-                                      decoration: const InputDecoration(
+                                      value: _selectedPaymentMethod,
+                                      isExpanded: true, // FIX: Added isExpanded
+                                      decoration: InputDecoration(
                                         labelText: 'Payment Method',
-                                        border: OutlineInputBorder(),
+                                        border: const OutlineInputBorder(),
+                                        prefixIcon: Icon(Icons.payment, color: primaryColor),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                                       ),
                                       items: ['All', 'Cash', 'GCash', 'Bank Transfer', 'Credit Card']
                                           .map((method) => DropdownMenuItem(
                                                 value: method,
-                                                child: Text(method),
+                                                child: Text(
+                                                  method,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
                                               ))
                                           .toList(),
                                       onChanged: (value) {
@@ -560,7 +586,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  'TRANSACTIONS',
+                                  'RECENT TRANSACTIONS',
                                   style: TextStyle(
                                     fontSize: Responsive.getTitleFontSize(context),
                                     fontWeight: FontWeight.bold,
@@ -616,47 +642,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
                                     itemCount: _filteredTransactions.length,
                                     itemBuilder: (context, index) {
                                       final transaction = _filteredTransactions[index];
-                                      return TransactionCard(
-                                        transaction: transaction,
-                                        onTap: () => _showTransactionDetails(transaction),
-                                        onPrintReceipt: () {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Receipt ${transaction.transactionNumber} sent to printer'),
-                                              backgroundColor: Colors.blue,
-                                            ),
-                                          );
-                                        },
-                                        onMarkComplete: transaction.status == 'Pending' ? () {
-                                          setState(() {
-                                            final idx = _transactions.indexWhere((t) => t.id == transaction.id);
-                                            if (idx != -1) {
-                                              _transactions[idx] = TransactionModel(
-                                                id: transaction.id,
-                                                transactionNumber: transaction.transactionNumber,
-                                                transactionDate: transaction.transactionDate,
-                                                customerName: transaction.customerName,
-                                                customerPhone: transaction.customerPhone,
-                                                paymentMethod: transaction.paymentMethod,
-                                                totalAmount: transaction.totalAmount,
-                                                amountPaid: transaction.amountPaid,
-                                                change: transaction.change,
-                                                status: 'Completed',
-                                                items: transaction.items,
-                                                notes: transaction.notes,
-                                                createdAt: transaction.createdAt,
-                                              );
-                                            }
-                                          });
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Transaction ${transaction.transactionNumber} marked as completed'),
-                                              backgroundColor: Colors.green,
-                                            ),
-                                          );
-                                        } : null,
-                                        showActions: !isMobile,
-                                      );
+                                      return _buildTransactionCard(transaction, primaryColor, context, isMobile);
                                     },
                                   ),
                           ],
@@ -673,7 +659,6 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
     );
   }
 
-  // UPDATED _buildStatCard method to match dashboard style
   Widget _buildStatCard(String title, String value, IconData icon, Color color, BuildContext context) {
     return Container(
       padding: EdgeInsets.all(Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16)),
@@ -712,102 +697,294 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> {
     );
   }
 
-  void _showTransactionDetails(TransactionModel transaction) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
+  Widget _buildTransactionCard(TransactionModel transaction, Color primaryColor, BuildContext context, bool isMobile) {
+    return Card(
+      elevation: 2,
+      margin: EdgeInsets.only(bottom: Responsive.getPaddingSize(context)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: Responsive.getCardPadding(context),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.receipt_long, color: Colors.deepOrange),
-            const SizedBox(width: 8),
-            Text(
-              transaction.transactionNumber,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDetailRow('Customer', transaction.customerName),
-              if (transaction.customerPhone.isNotEmpty)
-                _buildDetailRow('Phone', transaction.customerPhone),
-              _buildDetailRow('Date', '${transaction.formattedDate} ${transaction.formattedTime}'),
-              _buildDetailRow('Payment Method', transaction.paymentMethod),
-              _buildDetailRow('Status', transaction.status),
-              _buildDetailRow('Total Amount', '₱${transaction.totalAmount.toStringAsFixed(2)}'),
-              _buildDetailRow('Amount Paid', '₱${transaction.amountPaid.toStringAsFixed(2)}'),
-              _buildDetailRow('Change', '₱${transaction.change.toStringAsFixed(2)}'),
-              if (transaction.notes != null && transaction.notes!.isNotEmpty)
-                _buildDetailRow('Notes', transaction.notes!),
-              const SizedBox(height: 16),
-              const Text(
-                'Items Purchased:',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange),
-              ),
-              const SizedBox(height: 8),
-              ...transaction.items.map((item) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text('${item.productName} x${item.quantity}'),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    transaction.transactionNumber,
+                    style: TextStyle(
+                      fontSize: Responsive.getSubtitleFontSize(context),
+                      fontWeight: FontWeight.bold,
+                      color: primaryColor,
                     ),
-                    Text('₱${item.total.toStringAsFixed(2)}'),
+                  ),
+                ),
+                _buildStatusChip(transaction.status),
+              ],
+            ),
+            
+            Responsive.getSmallSpacing(context),
+            
+            Row(
+              children: [
+                Icon(
+                  Icons.person,
+                  size: Responsive.getIconSize(context, multiplier: 0.8),
+                  color: Colors.grey,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    transaction.customerName,
+                    style: TextStyle(
+                      fontSize: Responsive.getBodyFontSize(context),
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            
+            Responsive.getSmallSpacing(context),
+            
+            Row(
+              children: [
+                Icon(
+                  Icons.calendar_today,
+                  size: Responsive.getIconSize(context, multiplier: 0.7),
+                  color: Colors.grey,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  transaction.formattedDate,
+                  style: TextStyle(
+                    fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Icon(
+                  Icons.payment,
+                  size: Responsive.getIconSize(context, multiplier: 0.7),
+                  color: Colors.grey,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  transaction.paymentMethod,
+                  style: TextStyle(
+                    fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            
+            Responsive.getSpacing(context),
+            
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total Amount',
+                      style: TextStyle(
+                        fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
+                        color: Colors.grey,
+                      ),
+                    ),
+                    Text(
+                      '₱${transaction.totalAmount.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: Responsive.getSubtitleFontSize(context),
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
+                      ),
+                    ),
                   ],
                 ),
-              )),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('CLOSE'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Receipt ${transaction.transactionNumber} sent to printer'),
-                  backgroundColor: Colors.blue,
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
+                
+                if (!isMobile) ...[
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.receipt, size: 20),
+                        color: primaryColor,
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Receipt ${transaction.transactionNumber} sent to printer'),
+                              backgroundColor: Colors.blue,
+                            ),
+                          );
+                        },
+                        tooltip: 'Print Receipt',
+                      ),
+                      if (transaction.status == 'Pending')
+                        IconButton(
+                          icon: const Icon(Icons.check_circle, size: 20),
+                          color: Colors.green,
+                          onPressed: () {
+                            setState(() {
+                              final idx = _transactions.indexWhere((t) => t.id == transaction.id);
+                              if (idx != -1) {
+                                _transactions[idx] = TransactionModel(
+                                  id: transaction.id,
+                                  transactionNumber: transaction.transactionNumber,
+                                  transactionDate: transaction.transactionDate,
+                                  customerName: transaction.customerName,
+                                  customerPhone: transaction.customerPhone,
+                                  paymentMethod: transaction.paymentMethod,
+                                  totalAmount: transaction.totalAmount,
+                                  amountPaid: transaction.amountPaid,
+                                  change: transaction.change,
+                                  status: 'Completed',
+                                  items: transaction.items,
+                                  notes: transaction.notes,
+                                  createdAt: transaction.createdAt,
+                                );
+                              }
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Transaction ${transaction.transactionNumber} marked as completed'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          },
+                          tooltip: 'Mark as Complete',
+                        ),
+                    ],
+                  ),
+                ],
+              ],
             ),
-            child: const Text('PRINT RECEIPT', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+            
+            // Action Buttons for Mobile
+            if (isMobile) ...[
+              Responsive.getSpacing(context),
+              const Divider(height: 1),
+              Responsive.getSmallSpacing(context),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Receipt ${transaction.transactionNumber} sent to printer'),
+                            backgroundColor: Colors.blue,
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.receipt, size: 16),
+                      label: const Text('Print'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (transaction.status == 'Pending')
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            final idx = _transactions.indexWhere((t) => t.id == transaction.id);
+                            if (idx != -1) {
+                              _transactions[idx] = TransactionModel(
+                                id: transaction.id,
+                                transactionNumber: transaction.transactionNumber,
+                                transactionDate: transaction.transactionDate,
+                                customerName: transaction.customerName,
+                                customerPhone: transaction.customerPhone,
+                                paymentMethod: transaction.paymentMethod,
+                                totalAmount: transaction.totalAmount,
+                                amountPaid: transaction.amountPaid,
+                                change: transaction.change,
+                                status: 'Completed',
+                                items: transaction.items,
+                                notes: transaction.notes,
+                                createdAt: transaction.createdAt,
+                              );
+                            }
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Transaction ${transaction.transactionNumber} marked as completed'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.check_circle, size: 16),
+                        label: const Text('Complete'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          side: const BorderSide(color: Colors.green),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildStatusChip(String status) {
+    Color chipColor;
+    Color textColor;
+    IconData? icon;
+    
+    switch (status.toLowerCase()) {
+      case 'completed':
+        chipColor = Colors.green.shade100;
+        textColor = Colors.green.shade800;
+        icon = Icons.check_circle;
+        break;
+      case 'pending':
+        chipColor = Colors.orange.shade100;
+        textColor = Colors.orange.shade800;
+        icon = Icons.pending;
+        break;
+      case 'cancelled':
+        chipColor = Colors.red.shade100;
+        textColor = Colors.red.shade800;
+        icon = Icons.cancel;
+        break;
+      default:
+        chipColor = Colors.grey.shade100;
+        textColor = Colors.grey.shade800;
+        icon = Icons.info;
+    }
+    
+    return Chip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Text(
-              '$label:',
-              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
+          Icon(icon, size: 14, color: textColor),
+          const SizedBox(width: 4),
+          Text(
+            status,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: textColor,
             ),
           ),
         ],
       ),
+      backgroundColor: chipColor,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      visualDensity: VisualDensity.compact,
     );
   }
 }

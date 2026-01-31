@@ -91,7 +91,6 @@ class CategoryService {
   ];
 
   static Future<List<ProductCategory>> getCategoriesByType(String type) async {
-    await Future.delayed(const Duration(milliseconds: 200));
     if (type == 'inventory') {
       return List.from(_inventoryCategories.where((cat) => cat.isActive));
     } else {
@@ -100,13 +99,11 @@ class CategoryService {
   }
 
   static Future<List<ProductCategory>> getAllCategories() async {
-    await Future.delayed(const Duration(milliseconds: 200));
     final allCategories = [..._inventoryCategories, ..._productCategories];
     return List.from(allCategories.where((cat) => cat.isActive));
   }
 
   static Future<void> addCategory(ProductCategory category) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     if (category.type == 'inventory') {
       _inventoryCategories.add(category);
     } else {
@@ -115,7 +112,6 @@ class CategoryService {
   }
 
   static Future<void> updateCategory(ProductCategory category) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     if (category.type == 'inventory') {
       final index = _inventoryCategories.indexWhere((c) => c.id == category.id);
       if (index != -1) {
@@ -130,7 +126,6 @@ class CategoryService {
   }
 
   static Future<void> toggleCategoryStatus(String categoryId, String type) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     if (type == 'inventory') {
       final index = _inventoryCategories.indexWhere((c) => c.id == categoryId);
       if (index != -1) {
@@ -153,7 +148,6 @@ class CategoryService {
   }
 
   static Future<void> deleteCategory(String categoryId, String type) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     if (type == 'inventory') {
       _inventoryCategories.removeWhere((c) => c.id == categoryId);
     } else {
@@ -162,7 +156,6 @@ class CategoryService {
   }
 
   static Future<int> getCategoryCount(String type) async {
-    await Future.delayed(const Duration(milliseconds: 100));
     if (type == 'inventory') {
       return _inventoryCategories.where((cat) => cat.isActive).length;
     } else {

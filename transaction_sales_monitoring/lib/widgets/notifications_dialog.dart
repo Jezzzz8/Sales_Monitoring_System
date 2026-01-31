@@ -1,4 +1,3 @@
-// notifications_dialog.dart
 import 'package:flutter/material.dart';
 import '../models/notifications_data.dart';
 

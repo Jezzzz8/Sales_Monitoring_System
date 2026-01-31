@@ -1,8 +1,10 @@
+// pos_transaction.dart - FIXED VERSION
 import 'package:flutter/material.dart';
 import '../models/product.dart';
 import '../models/transaction.dart';
 import '../utils/responsive.dart';
-import '../widgets/product_card.dart';
+import '../services/settings_service.dart';
+import '../models/settings_model.dart';
 
 class POSTransaction extends StatefulWidget {
   const POSTransaction({super.key});
@@ -12,6 +14,10 @@ class POSTransaction extends StatefulWidget {
 }
 
 class _POSTransactionState extends State<POSTransaction> {
+  // Settings integration
+  AppSettings? _settings;
+  bool _isLoadingSettings = true;
+  
   final List<Product> _products = [
     Product(
       id: '1',
@@ -93,7 +99,6 @@ class _POSTransactionState extends State<POSTransaction> {
       stock: 12,
       createdAt: DateTime.now(),
     ),
-    // Desserts
     Product(
       id: '9',
       name: 'Leche Flan',
@@ -114,7 +119,6 @@ class _POSTransactionState extends State<POSTransaction> {
       stock: 20,
       createdAt: DateTime.now(),
     ),
-    // Pastas
     Product(
       id: '11',
       name: 'Carbonara Pasta',
@@ -144,14 +148,35 @@ class _POSTransactionState extends State<POSTransaction> {
   final TextEditingController _searchController = TextEditingController();
   String _paymentMethod = 'Cash';
   double _amountPaid = 0;
-  bool _showCustomerForm = false;
+  bool _showCustomerForm = true; // Changed to true by default
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    setState(() => _isLoadingSettings = true);
+    try {
+      _settings = await SettingsService.loadSettings();
+    } catch (e) {
+      print('Error loading settings in POS: $e');
+      _settings = AppSettings();
+    }
+    setState(() => _isLoadingSettings = false);
+  }
+
+  Color _getPrimaryColor() {
+    return _settings?.primaryColorValue ?? Colors.deepOrange;
+  }
 
   double get _subtotal {
     return _cartItems.fold(0, (sum, item) => sum + item.total);
   }
 
   double get _tax {
-    return _subtotal * 0.12; // 12% VAT
+    return _subtotal * (_settings?.taxRate ?? 0.12) / 100;
   }
 
   double get _total {
@@ -249,7 +274,7 @@ class _POSTransactionState extends State<POSTransaction> {
                 _notesController.clear();
                 _paymentMethod = 'Cash';
                 _amountPaid = 0;
-                _showCustomerForm = false;
+                _showCustomerForm = true;
               });
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -322,7 +347,6 @@ class _POSTransactionState extends State<POSTransaction> {
       createdAt: DateTime.now(),
     );
 
-    // Show receipt dialog
     _showReceiptDialog(transaction);
   }
 
@@ -340,7 +364,6 @@ class _POSTransactionState extends State<POSTransaction> {
             IconButton(
               icon: const Icon(Icons.print),
               onPressed: () {
-                // Print receipt functionality
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Receipt sent to printer'),
@@ -362,7 +385,7 @@ class _POSTransactionState extends State<POSTransaction> {
                   style: TextStyle(
                     fontSize: Responsive.getFontSize(context, mobile: 16, tablet: 18, desktop: 20),
                     fontWeight: FontWeight.bold,
-                    color: Colors.deepOrange,
+                    color: _getPrimaryColor(),
                   ),
                 ),
               ),
@@ -404,7 +427,7 @@ class _POSTransactionState extends State<POSTransaction> {
               )),
               const Divider(),
               _buildReceiptRow('Subtotal', _subtotal),
-              _buildReceiptRow('Tax (12%)', _tax),
+              _buildReceiptRow('Tax (${_settings?.taxRate ?? 12}%)', _tax),
               _buildReceiptRow('Total', _total, isBold: true),
               const Divider(),
               _buildReceiptRow('Amount Paid', _amountPaid),
@@ -466,7 +489,7 @@ class _POSTransactionState extends State<POSTransaction> {
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
+              backgroundColor: _getPrimaryColor(),
             ),
             child: const Text('COMPLETE SALE', style: TextStyle(color: Colors.white)),
           ),
@@ -512,6 +535,26 @@ class _POSTransactionState extends State<POSTransaction> {
   }
 
   Widget _buildProductCard(Product product, bool isMobile) {
+    final primaryColor = _getPrimaryColor();
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    // Calculate font sizes based on screen size
+    double getScaledFontSize(double mobile, double tablet, double desktop) {
+      if (screenWidth < 600) {
+        return mobile * 1.1; // Mobile: slightly larger
+      } else if (screenWidth < 1024) {
+        return tablet * 1.0; // Tablet: base size
+      } else {
+        return desktop * 0.9; // Desktop: slightly smaller
+      }
+    }
+    
+    double getIconScale() {
+      if (screenWidth < 600) return 1.3; // Mobile: larger icons
+      if (screenWidth < 1024) return 1.5; // Tablet: even larger icons
+      return 1.2; // Desktop: normal icons
+    }
+    
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -521,27 +564,28 @@ class _POSTransactionState extends State<POSTransaction> {
         onTap: () => _addToCart(product),
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          constraints: BoxConstraints(
-            minHeight: Responsive.getCardHeight(context, multiplier: 0.9),
+          padding: EdgeInsets.all(
+            screenWidth < 600 ? 10 : 12, // Larger padding on mobile
           ),
-          padding: EdgeInsets.all(Responsive.getCardPadding(context).horizontal),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Product Image/Icon Container with responsive sizing
+              // Product Image/Icon - SCALED based on screen size
               Container(
-                height: Responsive.getCardHeight(context, multiplier: 0.4),
+                height: screenWidth < 600 
+                  ? 100  // Mobile: taller
+                  : screenWidth < 1024 
+                    ? 120 // Tablet: even taller
+                    : 80, // Desktop: normal
                 width: double.infinity,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: product.categoryId == '5' // Whole Lechon
-                        ? [Colors.deepOrange.shade50, Colors.orange.shade50]
-                        : product.categoryId == '6' // Lechon Belly
-                            ? [Colors.orange.shade50, Colors.amber.shade50]
-                            : [Colors.blue.shade50, Colors.cyan.shade50],
+                    colors: [
+                      primaryColor.withOpacity(0.1),
+                      primaryColor.withOpacity(0.05),
+                    ],
                   ),
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -549,34 +593,37 @@ class _POSTransactionState extends State<POSTransaction> {
                   children: [
                     Center(
                       child: Icon(
-                        product.categoryId == '5' 
-                            ? Icons.celebration 
-                            : product.categoryId == '6'
-                                ? Icons.restaurant_menu
-                                : Icons.local_fire_department,
-                        color: product.categoryId == '5'
-                            ? Colors.deepOrange
-                            : product.categoryId == '6'
-                                ? Colors.orange
-                                : Colors.blue,
-                        size: Responsive.getIconSize(context, multiplier: 1.5),
+                        _getProductIcon(product.categoryId),
+                        color: primaryColor,
+                        size: screenWidth < 600 
+                          ? 40  // Mobile: larger icon
+                          : screenWidth < 1024 
+                            ? 50  // Tablet: even larger icon
+                            : 36, // Desktop: normal icon
                       ),
                     ),
                     if (product.stock < 5)
                       Positioned(
-                        top: 4,
-                        right: 4,
+                        top: 6,
+                        right: 6,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: screenWidth < 600 ? 6 : 4,
+                            vertical: screenWidth < 600 ? 3 : 2,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.red,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             '${product.stock} left',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: Responsive.getFontSize(context, mobile: 8, tablet: 9, desktop: 10),
+                              fontSize: screenWidth < 600 
+                                ? 10  // Mobile: larger text
+                                : screenWidth < 1024 
+                                  ? 11  // Tablet: larger text
+                                  : 9,  // Desktop: normal text
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -588,12 +635,16 @@ class _POSTransactionState extends State<POSTransaction> {
               
               SizedBox(height: Responsive.getSmallSpacing(context).height),
               
-              // Product Name
+              // Product Name - SCALED font size
               Text(
                 product.name,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
+                  fontSize: screenWidth < 600 
+                    ? 14  // Mobile: larger text
+                    : screenWidth < 1024 
+                      ? 16  // Tablet: larger text
+                      : 14, // Desktop: normal text
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -601,55 +652,76 @@ class _POSTransactionState extends State<POSTransaction> {
               
               SizedBox(height: Responsive.getSmallSpacing(context).height),
               
-              // Price
+              // Price - SCALED font size
               Text(
                 '₱${product.price.toStringAsFixed(0)}',
                 style: TextStyle(
-                  fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
+                  fontSize: screenWidth < 600 
+                    ? 18  // Mobile: larger text
+                    : screenWidth < 1024 
+                      ? 20  // Tablet: larger text
+                      : 16, // Desktop: normal text
                   fontWeight: FontWeight.bold,
-                  color: Colors.deepOrange,
+                  color: primaryColor,
                 ),
               ),
               
               SizedBox(height: Responsive.getSmallSpacing(context).height),
               
-              // Category and Stock Info
-              Column(
+              // Category and Stock - SCALED icons and text
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
                 children: [
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
                         Icons.category,
-                        size: Responsive.getIconSize(context, multiplier: 0.6),
+                        size: screenWidth < 600 
+                          ? 16  // Mobile: larger icon
+                          : screenWidth < 1024 
+                            ? 18  // Tablet: larger icon
+                            : 14, // Desktop: normal icon
                         color: Colors.grey,
                       ),
                       const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          product.categoryId,
-                          style: TextStyle(
-                            fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
-                            color: Colors.grey,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                      Text(
+                        product.categoryId,
+                        style: TextStyle(
+                          fontSize: screenWidth < 600 
+                            ? 11  // Mobile: larger text
+                            : screenWidth < 1024 
+                              ? 12  // Tablet: larger text
+                              : 10, // Desktop: normal text
+                          color: Colors.grey,
                         ),
                       ),
                     ],
                   ),
-                  SizedBox(height: Responsive.getSmallSpacing(context).height),
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
                         Icons.inventory,
-                        size: Responsive.getIconSize(context, multiplier: 0.6),
+                        size: screenWidth < 600 
+                          ? 16  // Mobile: larger icon
+                          : screenWidth < 1024 
+                            ? 18  // Tablet: larger icon
+                            : 14, // Desktop: normal icon
                         color: product.stock < 5 ? Colors.red : Colors.green,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Stock: ${product.stock}',
+                        '${product.stock}',
                         style: TextStyle(
-                          fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                          fontSize: screenWidth < 600 
+                            ? 11  // Mobile: larger text
+                            : screenWidth < 1024 
+                              ? 12  // Tablet: larger text
+                              : 10, // Desktop: normal text
                           color: product.stock < 5 ? Colors.red : Colors.green,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ],
@@ -663,17 +735,27 @@ class _POSTransactionState extends State<POSTransaction> {
     );
   }
 
+  IconData _getProductIcon(String category) {
+    switch (category) {
+      case '5': return Icons.celebration; // Whole Lechon
+      case '6': return Icons.restaurant_menu; // Lechon Belly
+      default: return Icons.fastfood;
+    }
+  }
+
   Widget _buildCartItemCard(TransactionItem item, int index, bool isMobile) {
+    final primaryColor = _getPrimaryColor();
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: Colors.deepOrange.shade50,
+          backgroundColor: primaryColor.withOpacity(0.1),
           child: Text(
             '${item.quantity}',
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: Colors.deepOrange,
+              color: primaryColor,
             ),
           ),
         ),
@@ -707,31 +789,35 @@ class _POSTransactionState extends State<POSTransaction> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingSettings) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    
+    final primaryColor = _getPrimaryColor();
     final isMobile = Responsive.isMobile(context);
     
     if (isMobile) {
-      return _buildMobileLayout();
+      return _buildMobileLayout(primaryColor);
     } else {
-      return _buildDesktopLayout();
+      return _buildDesktopLayout(primaryColor);
     }
   }
 
-  Widget _buildMobileLayout() {
+  Widget _buildMobileLayout(Color primaryColor) {
     return Scaffold(
       body: Column(
         children: [
-          // Cart Summary Bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Colors.deepOrange, Colors.orange],
+                colors: [primaryColor, primaryColor.withOpacity(0.8)],
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.deepOrange.withOpacity(0.3),
+                  color: primaryColor.withOpacity(0.3),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -769,7 +855,7 @@ class _POSTransactionState extends State<POSTransaction> {
                   label: const Text('VIEW CART'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
-                    foregroundColor: Colors.deepOrange,
+                    foregroundColor: primaryColor,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
@@ -780,64 +866,26 @@ class _POSTransactionState extends State<POSTransaction> {
             ),
           ),
           
-          // Search Bar
           Padding(
             padding: const EdgeInsets.all(12),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search products...',
-                prefixIcon: const Icon(Icons.search, color: Colors.deepOrange),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Colors.grey.shade100,
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          setState(() {
-                            _searchController.clear();
-                          });
-                        },
-                      )
-                    : null,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(30),
+                color: Colors.grey.shade100,
               ),
-              onChanged: (value) => setState(() {}),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search products...',
+                  prefixIcon: Icon(Icons.search, color: primaryColor),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+                onChanged: (value) => setState(() {}),
+              ),
             ),
           ),
           
-          // Category Filter Chips
-          SizedBox(
-            height: 50,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: ['All', 'Whole Lechon', 'Lechon Belly', 'Appetizers'].map((category) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(category),
-                    selected: _searchController.text == category,
-                    onSelected: (selected) {
-                      setState(() {
-                        if (selected) {
-                          _searchController.text = category == 'All' ? '' : category;
-                        }
-                      });
-                    },
-                    selectedColor: Colors.deepOrange,
-                    labelStyle: const TextStyle(color: Colors.white),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          
-          // Product Grid
           Expanded(
             child: GridView.builder(
               padding: const EdgeInsets.all(12),
@@ -845,17 +893,12 @@ class _POSTransactionState extends State<POSTransaction> {
                 crossAxisCount: 2,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: 0.85,
+                childAspectRatio: 0.75,
               ),
               itemCount: _filteredProducts.length,
               itemBuilder: (context, index) {
                 final product = _filteredProducts[index];
-                return ProductCard(
-                  product: product,
-                  onTap: () => _addToCart(product),
-                  onAddToCart: () => _addToCart(product),
-                  showAddButton: true,
-                );
+                return _buildProductCard(product, true);
               },
             ),
           ),
@@ -871,11 +914,10 @@ class _POSTransactionState extends State<POSTransaction> {
     );
   }
 
-  Widget _buildDesktopLayout() {
+  Widget _buildDesktopLayout(Color primaryColor) {
     return Scaffold(
       body: Row(
         children: [
-          // Left Panel - Product Selection (60%)
           Expanded(
             flex: 3,
             child: Container(
@@ -884,64 +926,38 @@ class _POSTransactionState extends State<POSTransaction> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            decoration: InputDecoration(
-                              hintText: 'Search products by name, category...',
-                              prefixIcon: const Icon(Icons.search, color: Colors.deepOrange),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(30),
-                                borderSide: BorderSide.none,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                              suffixIcon: _searchController.text.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear),
-                                      onPressed: () {
-                                        setState(() {
-                                          _searchController.clear();
-                                        });
-                                      },
-                                    )
-                                  : null,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                            ),
-                            onChanged: (value) => setState(() {}),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(30),
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
                           ),
+                        ],
+                      ),
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search products by name, category...',
+                          prefixIcon: Icon(Icons.search, color: primaryColor),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                         ),
-                        const SizedBox(width: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.deepOrange,
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.filter_alt, color: Colors.white, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                '${_filteredProducts.length} products',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                        onChanged: (value) => setState(() {}),
+                      ),
                     ),
                   ),
                   Expanded(
                     child: GridView.builder(
                       padding: const EdgeInsets.all(16),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
                         crossAxisSpacing: 16,
                         mainAxisSpacing: 16,
-                        childAspectRatio: 0.8,
+                        childAspectRatio: MediaQuery.of(context).size.width < 1024 ? 0.85 : 0.8,
                       ),
                       itemCount: _filteredProducts.length,
                       itemBuilder: (context, index) {
@@ -955,17 +971,16 @@ class _POSTransactionState extends State<POSTransaction> {
             ),
           ),
 
-          // Right Panel - Cart & Transaction Details (40%)
           Expanded(
             flex: 2,
-            child: _buildCartPanel(),
+            child: _buildCartPanel(primaryColor),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCartPanel() {
+  Widget _buildCartPanel(Color primaryColor) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -979,23 +994,22 @@ class _POSTransactionState extends State<POSTransaction> {
       ),
       child: Column(
         children: [
-          // Cart Header
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Colors.deepOrange, Colors.orange],
+                colors: [primaryColor, primaryColor.withOpacity(0.8)],
               ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.shopping_cart, color: Colors.white, size: 24),
-                    SizedBox(width: 12),
+                    const Icon(Icons.shopping_cart, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
                     Text(
                       'SHOPPING CART',
                       style: TextStyle(
@@ -1009,14 +1023,13 @@ class _POSTransactionState extends State<POSTransaction> {
                 Badge(
                   label: Text('${_cartItems.length}'),
                   backgroundColor: Colors.white,
-                  textColor: Colors.deepOrange,
+                  textColor: primaryColor,
                   largeSize: 24,
                 ),
               ],
             ),
           ),
 
-          // Cart Items - Made more flexible
           Expanded(
             child: _cartItems.isEmpty
                 ? Center(
@@ -1029,7 +1042,7 @@ class _POSTransactionState extends State<POSTransaction> {
                           color: Colors.grey.shade300,
                         ),
                         const SizedBox(height: 16),
-                        const Text(
+                        Text(
                           'Your cart is empty',
                           style: TextStyle(
                             fontSize: 18,
@@ -1038,175 +1051,158 @@ class _POSTransactionState extends State<POSTransaction> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
+                        Text(
                           'Add products to get started',
                           style: TextStyle(color: Colors.grey),
                         ),
                       ],
                     ),
                   )
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SingleChildScrollView(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minHeight: constraints.maxHeight,
-                          ),
+                : SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _cartItems.length,
+                          itemBuilder: (context, index) {
+                            final item = _cartItems[index];
+                            return _buildCartItemCard(item, index, false);
+                          },
+                        ),
+
+                        Container(
+                          padding: const EdgeInsets.all(16),
                           child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Cart Items List
-                              Container(
-                                constraints: BoxConstraints(
-                                  maxHeight: constraints.maxHeight * 0.5,
-                                ),
-                                child: ListView.builder(
-                                  padding: const EdgeInsets.all(16),
-                                  shrinkWrap: true,
-                                  itemCount: _cartItems.length,
-                                  itemBuilder: (context, index) {
-                                    final item = _cartItems[index];
-                                    return _buildCartItemCard(item, index, false);
-                                  },
-                                ),
-                              ),
-
-                              // Customer Details Section
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        const Text(
-                                          'CUSTOMER DETAILS',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.deepOrange,
-                                          ),
-                                        ),
-                                        IconButton(
-                                          icon: Icon(
-                                            _showCustomerForm ? Icons.expand_less : Icons.expand_more,
-                                            size: 20,
-                                          ),
-                                          onPressed: () {
-                                            setState(() {
-                                              _showCustomerForm = !_showCustomerForm;
-                                            });
-                                          },
-                                        ),
-                                      ],
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'CUSTOMER DETAILS',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: primaryColor,
                                     ),
-                                    if (_showCustomerForm)
-                                      Column(
-                                        children: [
-                                          const SizedBox(height: 12),
-                                          TextField(
-                                            controller: _customerNameController,
-                                            decoration: const InputDecoration(
-                                              labelText: 'Customer Name *',
-                                              prefixIcon: Icon(Icons.person),
-                                              border: OutlineInputBorder(),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          TextField(
-                                            controller: _customerPhoneController,
-                                            decoration: const InputDecoration(
-                                              labelText: 'Phone Number',
-                                              prefixIcon: Icon(Icons.phone),
-                                              border: OutlineInputBorder(),
-                                            ),
-                                            keyboardType: TextInputType.phone,
-                                          ),
-                                          const SizedBox(height: 8),
-                                          DropdownButtonFormField<String>(
-                                            initialValue: _paymentMethod,
-                                            decoration: const InputDecoration(
-                                              labelText: 'Payment Method',
-                                              prefixIcon: Icon(Icons.payment),
-                                              border: OutlineInputBorder(),
-                                            ),
-                                            items: ['Cash', 'GCash', 'Bank Transfer', 'Credit Card', 'PayMaya']
-                                                .map((method) => DropdownMenuItem(
-                                                      value: method,
-                                                      child: Text(method),
-                                                    ))
-                                                .toList(),
-                                            onChanged: (value) {
-                                              setState(() {
-                                                _paymentMethod = value!;
-                                              });
-                                            },
-                                          ),
-                                          const SizedBox(height: 8),
-                                          TextField(
-                                            controller: _notesController,
-                                            decoration: const InputDecoration(
-                                              labelText: 'Order Notes (Optional)',
-                                              prefixIcon: Icon(Icons.note),
-                                              border: OutlineInputBorder(),
-                                            ),
-                                            maxLines: 2,
-                                          ),
-                                        ],
-                                      ),
-                                  ],
-                                ),
-                              ),
-
-                              // Totals Section
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade50,
-                                  border: Border(
-                                    top: BorderSide(color: Colors.grey.shade200),
                                   ),
-                                ),
-                                child: Column(
+                                  IconButton(
+                                    icon: Icon(
+                                      _showCustomerForm ? Icons.expand_less : Icons.expand_more,
+                                      size: 20,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _showCustomerForm = !_showCustomerForm;
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
+                              if (_showCustomerForm)
+                                Column(
                                   children: [
-                                    _buildTotalRow('Subtotal', _subtotal),
-                                    _buildTotalRow('Tax (12%)', _tax),
-                                    const Divider(thickness: 2),
-                                    _buildTotalRow('Total', _total, isBold: true, fontSize: 18),
-                                    const SizedBox(height: 16),
+                                    const SizedBox(height: 12),
                                     TextField(
-                                      onChanged: (value) {
-                                        setState(() {
-                                          _amountPaid = double.tryParse(value) ?? 0;
-                                        });
-                                      },
-                                      decoration: const InputDecoration(
-                                        labelText: 'Amount Paid *',
-                                        border: OutlineInputBorder(),
-                                        prefixText: '₱',
-                                        prefixIcon: Icon(Icons.money),
+                                      controller: _customerNameController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Customer Name *',
+                                        prefixIcon: Icon(Icons.person, color: primaryColor),
+                                        border: const OutlineInputBorder(),
                                       ),
-                                      keyboardType: TextInputType.number,
                                     ),
                                     const SizedBox(height: 8),
-                                    if (_amountPaid > 0)
-                                      _buildTotalRow(
-                                        'Change',
-                                        _change,
-                                        color: _change >= 0 ? Colors.green : Colors.red,
-                                        isBold: true,
+                                    TextField(
+                                      controller: _customerPhoneController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Phone Number',
+                                        prefixIcon: Icon(Icons.phone, color: primaryColor),
+                                        border: const OutlineInputBorder(),
                                       ),
+                                      keyboardType: TextInputType.phone,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    DropdownButtonFormField<String>(
+                                      value: _paymentMethod,
+                                      decoration: InputDecoration(
+                                        labelText: 'Payment Method',
+                                        prefixIcon: Icon(Icons.payment, color: primaryColor),
+                                        border: const OutlineInputBorder(),
+                                      ),
+                                      items: ['Cash', 'GCash', 'Bank Transfer', 'Credit Card', 'PayMaya']
+                                          .map((method) => DropdownMenuItem(
+                                                value: method,
+                                                child: Text(method),
+                                              ))
+                                          .toList(),
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _paymentMethod = value!;
+                                        });
+                                      },
+                                    ),
+                                    const SizedBox(height: 8),
+                                    TextField(
+                                      controller: _notesController,
+                                      decoration: InputDecoration(
+                                        labelText: 'Order Notes (Optional)',
+                                        prefixIcon: Icon(Icons.note, color: primaryColor),
+                                        border: const OutlineInputBorder(),
+                                      ),
+                                      maxLines: 2,
+                                    ),
                                   ],
                                 ),
-                              ),
                             ],
                           ),
                         ),
-                      );
-                    },
+
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            border: Border(
+                              top: BorderSide(color: Colors.grey.shade200),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              _buildTotalRow('Subtotal', _subtotal),
+                              _buildTotalRow('Tax (${_settings?.taxRate ?? 12}%)', _tax),
+                              const Divider(thickness: 2),
+                              _buildTotalRow('Total', _total, isBold: true, fontSize: 18),
+                              const SizedBox(height: 16),
+                              TextField(
+                                onChanged: (value) {
+                                  setState(() {
+                                    _amountPaid = double.tryParse(value) ?? 0;
+                                  });
+                                },
+                                decoration: InputDecoration(
+                                  labelText: 'Amount Paid *',
+                                  border: const OutlineInputBorder(),
+                                  prefixText: '₱',
+                                  prefixIcon: Icon(Icons.money, color: primaryColor),
+                                ),
+                                keyboardType: TextInputType.number,
+                              ),
+                              const SizedBox(height: 8),
+                              if (_amountPaid > 0)
+                                _buildTotalRow(
+                                  'Change',
+                                  _change,
+                                  color: _change >= 0 ? Colors.green : Colors.red,
+                                  isBold: true,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
           ),
 
-          // Action Buttons - Fixed at bottom
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -1224,7 +1220,7 @@ class _POSTransactionState extends State<POSTransaction> {
                     label: const Text('CLEAR CART'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: const BorderSide(color: Colors.red),
+                      side: BorderSide(color: primaryColor),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -1281,331 +1277,198 @@ class _POSTransactionState extends State<POSTransaction> {
   }
 
   void _showCartModal(BuildContext context) {
-    bool localShowCustomerForm = _showCustomerForm;
-    String localPaymentMethod = _paymentMethod;
-    double localAmountPaid = _amountPaid;
-    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.9,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        final primaryColor = _getPrimaryColor();
+        
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.9,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-              child: Column(
-                children: [
-                  // Draggable handle
-                  Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  
-                  // Header
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'SHOPPING CART',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.deepOrange,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 24),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  const Divider(height: 1),
-                  
-                  // Cart Items
-                  Expanded(
-                    child: _cartItems.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.shopping_cart_outlined,
-                                  size: 80,
-                                  color: Colors.grey.shade300,
-                                ),
-                                const SizedBox(height: 16),
-                                const Text(
-                                  'Your cart is empty',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    color: Colors.grey,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Add products to get started',
-                                  style: TextStyle(color: Colors.grey),
-                                ),
-                              ],
-                            ),
-                          )
-                        : SingleChildScrollView(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              children: [
-                                // Cart Items List
-                                ..._cartItems.asMap().entries.map((entry) {
-                                  final index = entry.key;
-                                  final item = entry.value;
-                                  return _buildCartItemCard(item, index, true);
-                                }),
-                                
-                                const SizedBox(height: 16),
-                                
-                                // Customer Details Section
-                                Card(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            const Text(
-                                              'CUSTOMER DETAILS',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.deepOrange,
-                                              ),
-                                            ),
-                                            IconButton(
-                                              icon: Icon(
-                                                localShowCustomerForm ? Icons.expand_less : Icons.expand_more,
-                                                size: 20,
-                                              ),
-                                              onPressed: () {
-                                                setModalState(() {
-                                                  localShowCustomerForm = !localShowCustomerForm;
-                                                });
-                                              },
-                                            ),
-                                          ],
-                                        ),
-                                        if (localShowCustomerForm || _customerNameController.text.isNotEmpty)
-                                          Column(
-                                            children: [
-                                              const SizedBox(height: 12),
-                                              TextField(
-                                                controller: _customerNameController,
-                                                decoration: const InputDecoration(
-                                                  labelText: 'Customer Name *',
-                                                  prefixIcon: Icon(Icons.person),
-                                                  border: OutlineInputBorder(),
-                                                ),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              TextField(
-                                                controller: _customerPhoneController,
-                                                decoration: const InputDecoration(
-                                                  labelText: 'Phone Number',
-                                                  prefixIcon: Icon(Icons.phone),
-                                                  border: OutlineInputBorder(),
-                                                ),
-                                                keyboardType: TextInputType.phone,
-                                              ),
-                                              const SizedBox(height: 8),
-                                              DropdownButtonFormField<String>(
-                                                initialValue: localPaymentMethod,
-                                                decoration: const InputDecoration(
-                                                  labelText: 'Payment Method',
-                                                  prefixIcon: Icon(Icons.payment),
-                                                  border: OutlineInputBorder(),
-                                                ),
-                                                items: ['Cash', 'GCash', 'Bank Transfer', 'Credit Card', 'PayMaya']
-                                                    .map((method) => DropdownMenuItem(
-                                                          value: method,
-                                                          child: Text(method),
-                                                        ))
-                                                    .toList(),
-                                                onChanged: (value) {
-                                                  setModalState(() {
-                                                    localPaymentMethod = value!;
-                                                  });
-                                                },
-                                              ),
-                                              const SizedBox(height: 8),
-                                              TextField(
-                                                controller: _notesController,
-                                                decoration: const InputDecoration(
-                                                  labelText: 'Order Notes (Optional)',
-                                                  prefixIcon: Icon(Icons.note),
-                                                  border: OutlineInputBorder(),
-                                                ),
-                                                maxLines: 2,
-                                              ),
-                                            ],
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                
-                                const SizedBox(height: 16),
-                                
-                                // Amount Paid Section
-                                Card(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'PAYMENT',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.deepOrange,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        TextField(
-                                          onChanged: (value) {
-                                            setModalState(() {
-                                              localAmountPaid = double.tryParse(value) ?? 0;
-                                            });
-                                          },
-                                          decoration: const InputDecoration(
-                                            labelText: 'Amount Paid *',
-                                            border: OutlineInputBorder(),
-                                            prefixText: '₱',
-                                            prefixIcon: Icon(Icons.money),
-                                          ),
-                                          keyboardType: TextInputType.number,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                  ),
-                  
-                  // Footer with totals
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      border: Border(
-                        top: BorderSide(color: Colors.grey.shade300),
+              
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'SHOPPING CART',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
                       ),
                     ),
-                    child: Column(
-                      children: [
-                        _buildTotalRow('Subtotal', _subtotal),
-                        _buildTotalRow('Tax (12%)', _tax),
-                        const Divider(),
-                        _buildTotalRow('Total', _total, isBold: true, fontSize: 18),
-                        const SizedBox(height: 8),
-                        if (localAmountPaid > 0) ...[
-                          _buildTotalRow('Amount Paid', localAmountPaid),
-                          _buildTotalRow(
-                            'Change',
-                            localAmountPaid - _total,
-                            color: (localAmountPaid - _total) >= 0 ? Colors.green : Colors.red,
-                            isBold: true,
-                          ),
-                          const SizedBox(height: 8),
-                        ],
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              // Sync local state back to main state
-                              setState(() {
-                                _paymentMethod = localPaymentMethod;
-                                _amountPaid = localAmountPaid;
-                                _showCustomerForm = localShowCustomerForm;
-                              });
-                              
-                              // Process transaction
-                              if (_customerNameController.text.isEmpty) {
-                                setState(() {
-                                  _showCustomerForm = true;
-                                });
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Please enter customer name'),
-                                    backgroundColor: Colors.red,
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
-                                return;
-                              }
-
-                              if (_amountPaid < _total) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Amount paid (₱${_amountPaid.toStringAsFixed(2)}) is less than total (₱${_total.toStringAsFixed(2)})'),
-                                    backgroundColor: Colors.red,
-                                    behavior: SnackBarBehavior.floating,
-                                  ),
-                                );
-                                return;
-                              }
-
-                              final transaction = TransactionModel(
-                                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                                transactionNumber: 'TRX-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}',
-                                transactionDate: DateTime.now(),
-                                customerName: _customerNameController.text,
-                                customerPhone: _customerPhoneController.text,
-                                paymentMethod: _paymentMethod,
-                                totalAmount: _total,
-                                amountPaid: _amountPaid,
-                                change: _amountPaid - _total,
-                                status: 'Completed',
-                                items: List.from(_cartItems),
-                                notes: _notesController.text,
-                                createdAt: DateTime.now(),
-                              );
-
-                              Navigator.pop(context);
-                              _showReceiptDialog(transaction);
-                            },
-                            icon: const Icon(Icons.check_circle),
-                            label: const Text('PROCESS SALE'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 24),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const Divider(height: 1),
+              
+              Expanded(
+                child: _cartItems.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.shopping_cart_outlined,
+                              size: 80,
+                              color: Colors.grey.shade300,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Your cart is empty',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Add products to get started',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            ..._cartItems.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final item = entry.value;
+                              return _buildCartItemCard(item, index, true);
+                            }),
+                            
+                            const SizedBox(height: 16),
+                            
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                children: [
+                                  _buildTotalRow('Subtotal', _subtotal),
+                                  _buildTotalRow('Tax (${_settings?.taxRate ?? 12}%)', _tax),
+                                  const Divider(),
+                                  _buildTotalRow('Total', _total, isBold: true, fontSize: 18),
+                                  const SizedBox(height: 16),
+                                  TextField(
+                                    controller: _customerNameController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Customer Name *',
+                                      prefixIcon: Icon(Icons.person, color: primaryColor),
+                                      border: const OutlineInputBorder(),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    controller: _customerPhoneController,
+                                    decoration: InputDecoration(
+                                      labelText: 'Phone Number',
+                                      prefixIcon: Icon(Icons.phone, color: primaryColor),
+                                      border: const OutlineInputBorder(),
+                                    ),
+                                    keyboardType: TextInputType.phone,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  DropdownButtonFormField<String>(
+                                    value: _paymentMethod,
+                                    decoration: InputDecoration(
+                                      labelText: 'Payment Method',
+                                      prefixIcon: Icon(Icons.payment, color: primaryColor),
+                                      border: const OutlineInputBorder(),
+                                    ),
+                                    items: ['Cash', 'GCash', 'Bank Transfer', 'Credit Card', 'PayMaya']
+                                        .map((method) => DropdownMenuItem(
+                                              value: method,
+                                              child: Text(method),
+                                            ))
+                                        .toList(),
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _paymentMethod = value!;
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextField(
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _amountPaid = double.tryParse(value) ?? 0;
+                                      });
+                                    },
+                                    decoration: InputDecoration(
+                                      labelText: 'Amount Paid *',
+                                      border: const OutlineInputBorder(),
+                                      prefixText: '₱',
+                                      prefixIcon: Icon(Icons.money, color: primaryColor),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+              
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    top: BorderSide(color: Colors.grey.shade300),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _processTransaction,
+                        icon: const Icon(Icons.check_circle),
+                        label: const Text('PROCESS SALE'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            );
-          },
+            ],
+          ),
         );
       },
     );

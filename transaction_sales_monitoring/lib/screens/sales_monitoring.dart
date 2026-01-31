@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/transaction.dart';
 import '../utils/responsive.dart';
+import '../services/settings_service.dart';
+import '../models/settings_model.dart';
 
 class SalesMonitoring extends StatefulWidget {
   const SalesMonitoring({super.key});
@@ -10,6 +12,10 @@ class SalesMonitoring extends StatefulWidget {
 }
 
 class _SalesMonitoringState extends State<SalesMonitoring> {
+  // Settings integration
+  AppSettings? _settings;
+  bool _isLoadingSettings = true;
+  
   DateTime _selectedDate = DateTime.now();
   String _selectedView = 'Daily';
   String _selectedCategory = 'All';
@@ -42,7 +48,28 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
       ),
   ];
 
-  // Simple data structures without charts
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    setState(() => _isLoadingSettings = true);
+    try {
+      _settings = await SettingsService.loadSettings();
+    } catch (e) {
+      print('Error loading settings in sales: $e');
+      _settings = AppSettings();
+    }
+    setState(() => _isLoadingSettings = false);
+  }
+
+  Color _getPrimaryColor() {
+    return _settings?.primaryColorValue ?? Colors.deepOrange;
+  }
+
+  // Simple data structures
   List<Map<String, dynamic>> get _dailySalesData {
     final dailySales = <DateTime, double>{};
     
@@ -57,11 +84,11 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
     }
     
     return dailySales.entries
-        .map((entry) => {
+        .map((entry) => ({
               'date': entry.key,
               'sales': entry.value,
               'label': '${entry.key.day}/${entry.key.month}',
-            })
+            }))
         .toList()
       ..sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
   }
@@ -76,21 +103,33 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
     ];
   }
 
+  double get _totalRevenue {
+    return _sampleTransactions.fold(0.0, (sum, t) => sum + t.totalAmount);
+  }
+
+  double get _averageDailySales {
+    return _totalRevenue / (_dailySalesData.isNotEmpty ? _dailySalesData.length : 1);
+  }
+
+  double get _highestSale {
+    return _sampleTransactions.map((t) => t.totalAmount).reduce((a, b) => a > b ? a : b);
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingSettings) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    
+    final primaryColor = _getPrimaryColor();
     final isMobile = Responsive.isMobile(context);
     final isTablet = Responsive.isTablet(context);
-    final padding = Responsive.getScreenPadding(context);
     
-    final displayedData = _selectedView == 'Daily' 
-        ? _dailySalesData.take(isMobile ? 5 : 7).toList()
-        : _dailySalesData.take(isMobile ? 4 : 6).toList();
-
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
-            padding: padding,
+            padding: Responsive.getScreenPadding(context),
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 minHeight: constraints.maxHeight,
@@ -98,49 +137,50 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header
-                  Container(
-                    constraints: BoxConstraints(
-                      minHeight: 120,
-                    ),
-                    child: Card(
-                      elevation: 3,
-                      child: Padding(
-                        padding: Responsive.getCardPadding(context),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'SALES MONITORING & ANALYTICS',
-                              style: TextStyle(
-                                fontSize: Responsive.getFontSize(context, mobile: 16, tablet: 18, desktop: 20),
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Track sales performance, identify trends, and make data-driven decisions',
-                              style: TextStyle(
-                                fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
-                                color: Colors.grey.shade600,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
+                  // Quick Stats Grid
+                  Responsive.buildResponsiveCardGrid(
+                    context: context,
+                    title: 'SALES OVERVIEW',
+                    titleColor: primaryColor,
+                    centerTitle: true,
+                    cards: [
+                      _buildStatCard(
+                        'Total Revenue',
+                        '₱${_totalRevenue.toStringAsFixed(2)}',
+                        Icons.attach_money,
+                        Colors.green,
+                        context,
                       ),
-                    ),
+                      _buildStatCard(
+                        'Avg Daily Sales',
+                        '₱${_averageDailySales.toStringAsFixed(2)}',
+                        Icons.trending_up,
+                        Colors.blue,
+                        context,
+                      ),
+                      _buildStatCard(
+                        'Highest Sale',
+                        '₱${_highestSale.toStringAsFixed(2)}',
+                        Icons.arrow_upward,
+                        Colors.orange,
+                        context,
+                      ),
+                      _buildStatCard(
+                        'Transactions',
+                        '${_sampleTransactions.length}',
+                        Icons.receipt,
+                        Colors.purple,
+                        context,
+                      ),
+                    ],
                   ),
 
                   const SizedBox(height: 16),
 
-                  // Filters
+                  // Filters Card
                   Container(
                     constraints: BoxConstraints(
-                      minHeight: isMobile ? 250 : 150,
+                      minHeight: isMobile ? 200 : 150,
                     ),
                     child: Card(
                       elevation: 3,
@@ -151,11 +191,11 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'VIEW OPTIONS',
+                              'FILTER OPTIONS',
                               style: TextStyle(
-                                fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
+                                fontSize: Responsive.getSubtitleFontSize(context),
                                 fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
+                                color: primaryColor,
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -163,10 +203,11 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
                                 ? Column(
                                     children: [
                                       DropdownButtonFormField<String>(
-                                        initialValue: _selectedView,
-                                        decoration: const InputDecoration(
+                                        value: _selectedView,
+                                        decoration: InputDecoration(
                                           labelText: 'Time Period',
                                           border: OutlineInputBorder(),
+                                          prefixIcon: Icon(Icons.calendar_today, color: primaryColor),
                                         ),
                                         items: ['Daily', 'Weekly', 'Monthly']
                                             .map((view) => DropdownMenuItem(
@@ -182,10 +223,11 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
                                       ),
                                       const SizedBox(height: 12),
                                       DropdownButtonFormField<String>(
-                                        initialValue: _selectedCategory,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Category Filter',
+                                        value: _selectedCategory,
+                                        decoration: InputDecoration(
+                                          labelText: 'Category',
                                           border: OutlineInputBorder(),
+                                          prefixIcon: Icon(Icons.category, color: primaryColor),
                                         ),
                                         items: ['All', 'Whole Lechon', 'Lechon Belly', 'Appetizers']
                                             .map((category) => DropdownMenuItem(
@@ -199,18 +241,17 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
                                           });
                                         },
                                       ),
-                                      const SizedBox(height: 12),
-                                      _buildDatePicker(context, isMobile),
                                     ],
                                   )
                                 : Row(
                                     children: [
                                       Expanded(
                                         child: DropdownButtonFormField<String>(
-                                          initialValue: _selectedView,
-                                          decoration: const InputDecoration(
+                                          value: _selectedView,
+                                          decoration: InputDecoration(
                                             labelText: 'Time Period',
                                             border: OutlineInputBorder(),
+                                            prefixIcon: Icon(Icons.calendar_today, color: primaryColor),
                                           ),
                                           items: ['Daily', 'Weekly', 'Monthly']
                                               .map((view) => DropdownMenuItem(
@@ -228,10 +269,11 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
                                       const SizedBox(width: 16),
                                       Expanded(
                                         child: DropdownButtonFormField<String>(
-                                          initialValue: _selectedCategory,
-                                          decoration: const InputDecoration(
+                                          value: _selectedCategory,
+                                          decoration: InputDecoration(
                                             labelText: 'Category Filter',
                                             border: OutlineInputBorder(),
+                                            prefixIcon: Icon(Icons.category, color: primaryColor),
                                           ),
                                           items: ['All', 'Whole Lechon', 'Lechon Belly', 'Appetizers']
                                               .map((category) => DropdownMenuItem(
@@ -246,10 +288,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
                                           },
                                         ),
                                       ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: _buildDatePicker(context, isMobile),
-                                      ),
                                     ],
                                   ),
                           ],
@@ -260,7 +298,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
 
                   const SizedBox(height: 16),
 
-                  // Sales Chart (Simplified)
+                  // Sales Trend Chart
                   Container(
                     constraints: BoxConstraints(
                       minHeight: 300,
@@ -276,84 +314,14 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
                             Text(
                               'SALES TREND',
                               style: TextStyle(
-                                fontSize: Responsive.getFontSize(context, mobile: 16, tablet: 18, desktop: 20),
+                                fontSize: Responsive.getTitleFontSize(context),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                             const SizedBox(height: 16),
                             SizedBox(
                               height: isMobile ? 250 : 300,
-                              child: ListView.builder(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: displayedData.length,
-                                itemBuilder: (context, index) {
-                                  final data = displayedData[index];
-                                  final sales = data['sales'] as double;
-                                  final label = data['label'] as String;
-                                  final maxSales = displayedData
-                                      .map((d) => d['sales'] as double)
-                                      .reduce((a, b) => a > b ? a : b);
-                                  
-                                  return Container(
-                                    width: isMobile ? 50 : 60,
-                                    margin: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 8),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        Text(
-                                          '₱${(sales / 1000).toStringAsFixed(0)}K',
-                                          style: TextStyle(
-                                            fontSize: Responsive.getFontSize(context, mobile: 9, tablet: 10, desktop: 11),
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Container(
-                                          height: (sales / maxSales) * (isMobile ? 150 : 200),
-                                          width: isMobile ? 30 : 40,
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              begin: Alignment.bottomCenter,
-                                              end: Alignment.topCenter,
-                                              colors: [Colors.deepOrange, Colors.orange],
-                                            ),
-                                            borderRadius: BorderRadius.circular(4),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.deepOrange.withOpacity(0.3),
-                                                blurRadius: 4,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              (sales / 1000).toStringAsFixed(0),
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontSize: Responsive.getFontSize(context, mobile: 8, tablet: 9, desktop: 10),
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          label,
-                                          style: TextStyle(
-                                            fontSize: Responsive.getFontSize(context, mobile: 9, tablet: 10, desktop: 11),
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Center(
-                              child: _buildLegendItem(Colors.deepOrange, 'Sales'),
+                              child: _buildSalesChart(primaryColor, isMobile),
                             ),
                           ],
                         ),
@@ -363,7 +331,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
 
                   const SizedBox(height: 16),
 
-                  // Category Sales (Simplified)
+                  // Category Performance
                   Container(
                     constraints: BoxConstraints(
                       minHeight: isMobile ? 350 : 250,
@@ -379,7 +347,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
                             Text(
                               'CATEGORY PERFORMANCE',
                               style: TextStyle(
-                                fontSize: Responsive.getFontSize(context, mobile: 16, tablet: 18, desktop: 20),
+                                fontSize: Responsive.getTitleFontSize(context),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -387,125 +355,20 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
                             SizedBox(
                               height: isMobile ? 350 : 250,
                               child: isMobile
-                                  ? ListView.builder(
-                                      scrollDirection: Axis.vertical,
-                                      itemCount: _categorySalesData.length,
-                                      itemBuilder: (context, index) {
-                                        final data = _categorySalesData[index];
-                                        final category = data['category'] as String;
-                                        final sales = data['sales'] as double;
-                                        final color = data['color'] as Color;
-                                        final percentage = (sales / 76000) * 100;
-                                        
-                                        return Card(
-                                          margin: const EdgeInsets.only(bottom: 12),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(12),
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                  children: [
-                                                    Text(
-                                                      category,
-                                                      style: TextStyle(
-                                                        fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
-                                                        fontWeight: FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                    Text(
-                                                      '₱${sales.toStringAsFixed(0)}',
-                                                      style: TextStyle(
-                                                        fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
-                                                        fontWeight: FontWeight.bold,
-                                                        color: Colors.deepOrange,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Text(
-                                                  '${percentage.toStringAsFixed(1)}% of total sales',
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 8),
-                                                LinearProgressIndicator(
-                                                  value: percentage / 100,
-                                                  backgroundColor: color.withOpacity(0.2),
-                                                  valueColor: AlwaysStoppedAnimation<Color>(color),
-                                                  minHeight: 8,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      },
+                                  ? SingleChildScrollView(
+                                      child: Column(
+                                        children: _categorySalesData
+                                            .map((data) => _buildCategoryCard(data, true))
+                                            .toList(),
+                                      ),
                                     )
                                   : GridView.count(
                                       crossAxisCount: isTablet ? 2 : 3,
                                       crossAxisSpacing: 16,
                                       mainAxisSpacing: 16,
-                                      children: _categorySalesData.map((data) {
-                                        final category = data['category'] as String;
-                                        final sales = data['sales'] as double;
-                                        final color = data['color'] as Color;
-                                        
-                                        return Card(
-                                          elevation: 2,
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(16),
-                                            child: Column(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Container(
-                                                  width: 60,
-                                                  height: 60,
-                                                  decoration: BoxDecoration(
-                                                    color: color.withOpacity(0.1),
-                                                    shape: BoxShape.circle,
-                                                    border: Border.all(color: color.withOpacity(0.3), width: 2),
-                                                  ),
-                                                  child: Center(
-                                                    child: Text(
-                                                      '${(sales / 1000).toStringAsFixed(0)}K',
-                                                      style: TextStyle(
-                                                        fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
-                                                        fontWeight: FontWeight.bold,
-                                                        color: color,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 12),
-                                                Text(
-                                                  category,
-                                                  style: TextStyle(
-                                                    fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                  textAlign: TextAlign.center,
-                                                  maxLines: 2,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  '₱${sales.toStringAsFixed(2)}',
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      }).toList(),
+                                      children: _categorySalesData
+                                          .map((data) => _buildCategoryCard(data, false))
+                                          .toList(),
                                     ),
                             ),
                           ],
@@ -516,219 +379,53 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
 
                   const SizedBox(height: 16),
 
-                  // Key Metrics
+                  // Peak Hours Card
                   Container(
-                    constraints: BoxConstraints(
-                      minHeight: 150,
-                    ),
-                    child: Card(
-                      elevation: 3,
-                      child: Padding(
-                        padding: Responsive.getCardPadding(context),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'KEY METRICS',
-                              style: TextStyle(
-                                fontSize: Responsive.getFontSize(context, mobile: 16, tablet: 18, desktop: 20),
-                                fontWeight: FontWeight.bold,
-                              ),
+                  constraints: BoxConstraints(
+                    minHeight: 200,
+                  ),
+                  child: Card(
+                    elevation: 3,
+                    child: Padding(
+                      padding: Responsive.getCardPadding(context),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'PEAK HOURS',
+                            style: TextStyle(
+                              fontSize: Responsive.getTitleFontSize(context),
+                              fontWeight: FontWeight.bold,
                             ),
-                            const SizedBox(height: 16),
-                            GridView.count(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              crossAxisCount: isMobile ? 2 : 4,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: isMobile ? 1.2 : 1.5,
-                              children: [
-                                _buildMetricCard(
-                                  'Total Sales (30 days)',
-                                  '₱${_sampleTransactions.fold(0.0, (sum, t) => sum + t.totalAmount).toStringAsFixed(2)}',
-                                  Icons.attach_money,
-                                  Colors.green,
-                                  context,
+                          ),
+                          const SizedBox(height: 16),
+                          isMobile
+                              ? Column(
+                                  children: [
+                                    _buildTimeSlotCard('8AM-11AM', 5, 15000.0, 3000.0),
+                                    _buildTimeSlotCard('11AM-2PM', 8, 24000.0, 3000.0),
+                                    _buildTimeSlotCard('2PM-5PM', 6, 12000.0, 2000.0),
+                                    _buildTimeSlotCard('5PM-8PM', 4, 8000.0, 2000.0),
+                                  ],
+                                )
+                              : Row(
+                                  children: [
+                                    Expanded(child: _buildTimeSlotCard('8AM-11AM', 5, 15000.0, 3000.0)),
+                                    Expanded(child: _buildTimeSlotCard('11AM-2PM', 8, 24000.0, 3000.0)),
+                                    Expanded(child: _buildTimeSlotCard('2PM-5PM', 6, 12000.0, 2000.0)),
+                                    Expanded(child: _buildTimeSlotCard('5PM-8PM', 4, 8000.0, 2000.0)),
+                                  ],
                                 ),
-                                _buildMetricCard(
-                                  'Average Daily Sales',
-                                  '₱${(_sampleTransactions.fold(0.0, (sum, t) => sum + t.totalAmount) / 30).toStringAsFixed(2)}',
-                                  Icons.trending_up,
-                                  Colors.blue,
-                                  context,
-                                ),
-                                _buildMetricCard(
-                                  'Highest Sale',
-                                  '₱${_sampleTransactions.map((t) => t.totalAmount).reduce((a, b) => a > b ? a : b).toStringAsFixed(2)}',
-                                  Icons.arrow_upward,
-                                  Colors.orange,
-                                  context,
-                                ),
-                                _buildMetricCard(
-                                  'Transactions Count',
-                                  '${_sampleTransactions.length}',
-                                  Icons.receipt,
-                                  Colors.purple,
-                                  context,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                        ],
                       ),
                     ),
                   ),
+                ),
 
                   const SizedBox(height: 16),
 
-                  // Peak Hours Analysis
-                  Container(
-                    constraints: BoxConstraints(
-                      minHeight: 200,
-                    ),
-                    child: Card(
-                      elevation: 3,
-                      child: Padding(
-                        padding: Responsive.getCardPadding(context),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'PEAK HOURS ANALYSIS',
-                              style: TextStyle(
-                                fontSize: Responsive.getFontSize(context, mobile: 16, tablet: 18, desktop: 20),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Identifies busiest times to optimize operations',
-                              style: TextStyle(
-                                fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
-                                color: Colors.grey,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            isMobile
-                                ? ListView.builder(
-                                    shrinkWrap: true,
-                                    physics: const NeverScrollableScrollPhysics(),
-                                    itemCount: 4,
-                                    itemBuilder: (context, index) {
-                                      final slots = [
-                                        {'slot': '8AM-11AM', 'transactions': 5, 'sales': 15000.0, 'average': 3000.0},
-                                        {'slot': '11AM-2PM', 'transactions': 8, 'sales': 24000.0, 'average': 3000.0},
-                                        {'slot': '2PM-5PM', 'transactions': 6, 'sales': 12000.0, 'average': 2000.0},
-                                        {'slot': '5PM-8PM', 'transactions': 4, 'sales': 8000.0, 'average': 2000.0},
-                                      ][index];
-                                      
-                                      return Card(
-                                        margin: const EdgeInsets.only(bottom: 8),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(12),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                slots['slot'] as String,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        'Transactions:',
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        '${slots['transactions']}',
-                                                        style: const TextStyle(
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        'Total Sales:',
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        '₱${(slots['sales'] as double).toStringAsFixed(0)}',
-                                                        style: const TextStyle(
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        'Average:',
-                                                        style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        '₱${(slots['average'] as double).toStringAsFixed(0)}',
-                                                        style: const TextStyle(
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  )
-                                : DataTable(
-                                    columns: [
-                                      const DataColumn(label: Text('Time Slot')),
-                                      const DataColumn(label: Text('Transactions')),
-                                      const DataColumn(label: Text('Total Sales')),
-                                      const DataColumn(label: Text('Average Sale')),
-                                    ],
-                                    rows: [
-                                      _buildTimeSlotRow('8AM-11AM', 5, 15000.0, 3000.0),
-                                      _buildTimeSlotRow('11AM-2PM', 8, 24000.0, 3000.0),
-                                      _buildTimeSlotRow('2PM-5PM', 6, 12000.0, 2000.0),
-                                      _buildTimeSlotRow('5PM-8PM', 4, 8000.0, 2000.0),
-                                    ],
-                                  ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Insights Card
+                  // Business Insights Card
                   Container(
                     constraints: BoxConstraints(
                       minHeight: 150,
@@ -744,14 +441,14 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.lightbulb, color: Colors.amber),
+                                Icon(Icons.lightbulb, color: primaryColor),
                                 const SizedBox(width: 8),
                                 Text(
                                   'BUSINESS INSIGHTS',
                                   style: TextStyle(
-                                    fontSize: Responsive.getFontSize(context, mobile: 16, tablet: 18, desktop: 20),
+                                    fontSize: Responsive.getTitleFontSize(context),
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.blue,
+                                    color: primaryColor,
                                   ),
                                 ),
                               ],
@@ -772,11 +469,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
                               'Create bundles to increase average sale',
                               context,
                             ),
-                            _buildInsightItem(
-                              'Slow days: Tuesday and Wednesday',
-                              'Consider special promotions on these days',
-                              context,
-                            ),
                           ],
                         ),
                       ),
@@ -791,111 +483,26 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
     );
   }
 
-  Widget _buildDatePicker(BuildContext context, bool isMobile) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisAlignment: isMobile ? MainAxisAlignment.spaceBetween : MainAxisAlignment.start,
-        children: [
-          const Icon(Icons.calendar_today, size: 20, color: Colors.deepOrange),
-          const SizedBox(width: 8),
-          Text(
-            '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          IconButton(
-            icon: const Icon(Icons.arrow_drop_down, size: 20),
-            onPressed: () async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: _selectedDate,
-                firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                lastDate: DateTime.now(),
-              );
-              if (picked != null) {
-                setState(() {
-                  _selectedDate = picked;
-                });
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegendItem(Color color, String text) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 16,
-          height: 16,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          text,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMetricCard(String title, String value, IconData icon, Color color, BuildContext context) {
+  Widget _buildStatCard(String title, String value, IconData icon, Color color, BuildContext context) {
     return Container(
       padding: EdgeInsets.all(Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16)),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: Responsive.getFontSize(context, mobile: 20, tablet: 24, desktop: 28)),
-              const Spacer(),
-              if (title.contains('Trending'))
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.green,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text(
-                    '+12%',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          Icon(icon, color: color, size: Responsive.getIconSize(context, multiplier: 1.5)),
+          const SizedBox(height: 8),
           Text(
             title,
             style: TextStyle(
               fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14),
               color: Colors.grey.shade600,
             ),
+            textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -906,30 +513,263 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
               fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
               fontWeight: FontWeight.bold,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
           ),
         ],
       ),
     );
   }
 
-  DataRow _buildTimeSlotRow(String slot, int transactions, double sales, double average) {
-    return DataRow(cells: [
-      DataCell(Text(slot, style: const TextStyle(fontWeight: FontWeight.bold))),
-      DataCell(
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.blue.shade50,
-            borderRadius: BorderRadius.circular(4),
+  Widget _buildSalesChart(Color primaryColor, bool isMobile) {
+    final displayedData = _dailySalesData.take(isMobile ? 5 : 7).toList();
+    
+    return ListView.builder(
+      scrollDirection: Axis.horizontal,
+      itemCount: displayedData.length,
+      itemBuilder: (context, index) {
+        final data = displayedData[index];
+        final sales = data['sales'] as double;
+        final label = data['label'] as String;
+        final maxSales = displayedData
+            .map((d) => d['sales'] as double)
+            .reduce((a, b) => a > b ? a : b);
+        
+        return Container(
+          width: isMobile ? 50 : 60,
+          margin: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 8),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text(
+                '₱${(sales / 1000).toStringAsFixed(0)}K',
+                style: TextStyle(
+                  fontSize: Responsive.getFontSize(context, mobile: 9, tablet: 10, desktop: 11),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                height: (sales / maxSales) * (isMobile ? 150 : 200),
+                width: isMobile ? 30 : 40,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [primaryColor, primaryColor.withOpacity(0.7)],
+                  ),
+                  borderRadius: BorderRadius.circular(4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryColor.withOpacity(0.3),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    (sales / 1000).toStringAsFixed(0),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: Responsive.getFontSize(context, mobile: 8, tablet: 9, desktop: 10),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: Responsive.getFontSize(context, mobile: 9, tablet: 10, desktop: 11),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
-          child: Text('$transactions', style: const TextStyle(fontWeight: FontWeight.bold)),
+        );
+      },
+    );
+  }
+
+  Widget _buildCategoryCard(Map<String, dynamic> data, bool isMobile) {
+    final category = data['category'] as String;
+    final sales = data['sales'] as double;
+    final color = data['color'] as Color;
+    final percentage = (sales / 76000) * 100;
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    if (isMobile) {
+      return Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Padding(
+          padding: EdgeInsets.all(screenWidth < 600 ? 16 : 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    category,
+                    style: TextStyle(
+                      fontSize: screenWidth < 600 ? 16 : 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    '₱${sales.toStringAsFixed(0)}',
+                    style: TextStyle(
+                      fontSize: screenWidth < 600 ? 16 : 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.deepOrange,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${percentage.toStringAsFixed(1)}% of total sales',
+                style: TextStyle(
+                  fontSize: screenWidth < 600 ? 13 : 12,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: percentage / 100,
+                backgroundColor: color.withOpacity(0.2),
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+                minHeight: screenWidth < 600 ? 10 : 8,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      return Card(
+        elevation: 2,
+        child: Padding(
+          padding: EdgeInsets.all(screenWidth < 1024 ? 20 : 16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: screenWidth < 1024 ? 70 : 60,
+                height: screenWidth < 1024 ? 70 : 60,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color.withOpacity(0.3), width: 2),
+                ),
+                child: Center(
+                  child: Text(
+                    '${(sales / 1000).toStringAsFixed(0)}K',
+                    style: TextStyle(
+                      fontSize: screenWidth < 1024 ? 16 : 14,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                category,
+                style: TextStyle(
+                  fontSize: screenWidth < 1024 ? 16 : 14,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '₱${sales.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: screenWidth < 1024 ? 13 : 12,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildTimeSlotCard(String slot, int transactions, double sales, double average) {
+    return Card(
+      margin: const EdgeInsets.all(4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              slot,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Transactions:',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    Text(
+                      '$transactions',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Sales:',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    Text(
+                      '₱${sales.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Avg: ₱${average.toStringAsFixed(0)}',
+              style: const TextStyle(
+                fontSize: 10,
+                color: Colors.grey,
+              ),
+            ),
+          ],
         ),
       ),
-      DataCell(Text('₱${sales.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold))),
-      DataCell(Text('₱${average.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold))),
-    ]);
+    );
   }
 
   Widget _buildInsightItem(String title, String description, BuildContext context) {
@@ -938,7 +778,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.arrow_right, size: 20, color: Colors.blue),
+          Icon(Icons.arrow_right, size: 20, color: Colors.blue),
           const SizedBox(width: 8),
           Expanded(
             child: Column(

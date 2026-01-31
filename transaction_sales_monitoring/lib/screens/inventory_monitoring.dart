@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../models/inventory.dart';
 import '../utils/responsive.dart';
 import '../models/production_inventory.dart';
 import '../screens/category_management.dart';
@@ -125,10 +124,6 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
 
   Set<String> get _itemTypes {
     return _inventoryItems.map((item) => item.name).toSet();
-  }
-
-  Set<String> get _categories {
-    return _inventoryItems.map((item) => item.category).toSet();
   }
 
   void _restockItem(ProductionInventory item) {
@@ -693,16 +688,6 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
     String selectedStatus = item.status;
     List<String> statuses = ['In Stock', 'Low Stock', 'Out of Stock'];
     
-    final List<Map<String, dynamic>> productionItemTypes = [
-      {'name': 'Live Pig', 'units': ['head'], 'categories': ['18-20kg', '21-23kg', '24-26kg', '27-30kg']},
-      {'name': 'Live Cow', 'units': ['head'], 'categories': ['150-200kg', '200-250kg', '250-300kg']},
-      {'name': 'Live Goat', 'units': ['head'], 'categories': ['15-20kg', '20-25kg', '25-30kg']},
-      {'name': 'Live Turkey', 'units': ['head'], 'categories': ['8-10kg', '10-12kg', '12-15kg']},
-      {'name': 'Pork Belly', 'units': ['piece', 'kg'], 'categories': ['3kg', '5kg', '6kg', '8kg']},
-      {'name': 'Pork Shoulder', 'units': ['kg', 'piece'], 'categories': ['5kg', '8kg', '10kg']},
-      {'name': 'Pork Leg', 'units': ['piece', 'kg'], 'categories': ['3-4kg', '4-5kg', '5-6kg']},
-    ];
-
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(

@@ -6,19 +6,15 @@ class TransactionService {
   static final List<TransactionModel> _transactions = [];
 
   static Future<List<TransactionModel>> getTransactions() async {
-    // Simulate API delay
-    await Future.delayed(const Duration(milliseconds: 500));
     return List.from(_transactions);
   }
 
   static Future<void> addTransaction(TransactionModel transaction) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     _transactions.add(transaction);
     _transactions.sort((a, b) => b.transactionDate.compareTo(a.transactionDate));
   }
 
   static Future<List<TransactionModel>> getTransactionsByDate(DateTime date) async {
-    await Future.delayed(const Duration(milliseconds: 200));
     return _transactions
         .where((transaction) =>
             transaction.transactionDate.year == date.year &&

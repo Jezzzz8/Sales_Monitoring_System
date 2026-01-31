@@ -18,7 +18,7 @@ class ProductCategory {
     required this.createdAt,
     this.updatedAt,
   });
-
+  
   Map<String, dynamic> toMap() {
     return {
       'id': id,

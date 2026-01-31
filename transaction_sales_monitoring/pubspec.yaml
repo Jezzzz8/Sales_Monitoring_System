@@ -17,6 +17,8 @@ dependencies:
   webview_flutter: ^4.7.0
   webview_flutter_android: ^4.4.1
   webview_flutter_wkwebview: ^3.5.1
+  lottie: ^2.7.0
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:
@@ -28,3 +30,5 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - assets/sounds/
+    - assets/animations/

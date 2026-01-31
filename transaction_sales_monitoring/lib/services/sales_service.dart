@@ -1,7 +1,6 @@
 
 class SalesService {
   static Future<Map<String, dynamic>> getSalesSummary(DateTime startDate, DateTime endDate) async {
-    await Future.delayed(const Duration(milliseconds: 500));
     
     // Simulate data
     return {
@@ -26,7 +25,6 @@ class SalesService {
   }
 
   static Future<List<Map<String, dynamic>>> getSalesTrend(DateTime startDate, DateTime endDate) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     
     final List<Map<String, dynamic>> trend = [];
     DateTime current = startDate;
@@ -44,7 +42,6 @@ class SalesService {
   }
 
   static Future<Map<String, double>> getCategorySales(DateTime startDate, DateTime endDate) async {
-    await Future.delayed(const Duration(milliseconds: 200));
     
     return {
       'Whole Lechon': 45000.0,

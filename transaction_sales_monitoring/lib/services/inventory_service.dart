@@ -93,27 +93,22 @@ class InventoryService {
   };
 
   static Future<List<InventoryItem>> getInventoryItems() async {
-    await Future.delayed(const Duration(milliseconds: 500));
     return List.from(_inventoryItems);
   }
 
   static Future<List<String>> getLivestockTypes() async {
-    await Future.delayed(const Duration(milliseconds: 100));
     return List.from(_livestockTypes);
   }
 
   static Future<List<String>> getCategoriesForLivestock(String livestockType) async {
-    await Future.delayed(const Duration(milliseconds: 100));
     return List.from(_categoryByLivestock[livestockType] ?? []);
   }
 
   static Future<void> addInventoryItem(InventoryItem item) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     _inventoryItems.add(item);
   }
 
   static Future<void> updateInventoryItem(InventoryItem item) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     final index = _inventoryItems.indexWhere((i) => i.id == item.id);
     if (index != -1) {
       _inventoryItems[index] = item;
@@ -121,12 +116,10 @@ class InventoryService {
   }
 
   static Future<void> deleteInventoryItem(String itemId) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     _inventoryItems.removeWhere((item) => item.id == itemId);
   }
 
   static Future<void> restockItem(String itemId, double quantity) async {
-    await Future.delayed(const Duration(milliseconds: 300));
     final index = _inventoryItems.indexWhere((i) => i.id == itemId);
     if (index != -1) {
       final item = _inventoryItems[index];
@@ -150,12 +143,10 @@ class InventoryService {
   }
 
   static Future<List<InventoryItem>> getItemsNeedingReorder() async {
-    await Future.delayed(const Duration(milliseconds: 200));
     return _inventoryItems.where((item) => item.needsReorder).toList();
   }
 
   static Future<double> getTotalInventoryValue() async {
-    await Future.delayed(const Duration(milliseconds: 100));
     
     double totalValue = 0.0;
     for (final item in _inventoryItems) {
@@ -165,7 +156,6 @@ class InventoryService {
   }
 
   static Future<int> getTotalLivestockCount() async {
-    await Future.delayed(const Duration(milliseconds: 100));
     
     int totalCount = 0;
     for (final item in _inventoryItems) {
@@ -175,7 +165,6 @@ class InventoryService {
   }
 
   static Future<Map<String, int>> getLivestockCountByType() async {
-    await Future.delayed(const Duration(milliseconds: 100));
     final Map<String, int> counts = {};
     for (final item in _inventoryItems) {
       counts[item.name] = (counts[item.name] ?? 0) + item.currentStock.toInt();
