@@ -1,0 +1,39 @@
+name: transaction_sales_monitoring
+description: "Gene's Lechon Transaction & Sales Monitoring System"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  image_picker: ^1.0.4
+  
+  # Database - MySQL for XAMPP
+  mysql1: ^0.20.0
+  
+  # Storage
+  shared_preferences: ^2.2.3
+  
+  # Internationalization
+  intl: ^0.20.2
+  
+  # WebView with compatible version
+  webview_flutter: ^4.7.0
+  
+  # WebView platform implementations
+  webview_flutter_android: ^4.4.1
+  webview_flutter_wkwebview: ^3.5.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+    assets:
+      - assets/images/
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
