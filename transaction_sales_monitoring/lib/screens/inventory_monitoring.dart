@@ -332,7 +332,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
               children: [
                 Icon(Icons.add_circle, color: Colors.deepOrange),
                 SizedBox(width: 8),
-                Text('Add Production Inventory Item'),
+                Text('Add Production Item'),
               ],
             ),
             content: SingleChildScrollView(

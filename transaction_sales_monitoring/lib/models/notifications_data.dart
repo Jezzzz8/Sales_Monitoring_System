@@ -98,4 +98,32 @@ class NotificationsData {
   static void addNotification(NotificationItem notification) {
     notifications.insert(0, notification);
   }
+
+  static void clearAll() {
+    notifications.clear();
+  }
+
+  static int get readCount {
+    return notifications.where((notification) => notification.isRead).length;
+  }
+
+  static List<NotificationItem> getNotificationsByType(NotificationType type) {
+    return notifications.where((notification) => notification.type == type).toList();
+  }
+
+  static List<NotificationItem> get unreadNotifications {
+    return notifications.where((notification) => !notification.isRead).toList();
+  }
+
+  static void removeOldNotifications(int days) {
+    final cutoffDate = DateTime.now().subtract(Duration(days: days));
+    notifications.removeWhere((notification) => notification.timestamp.isBefore(cutoffDate));
+  }
+
+  static void toggleReadStatus(String id) {
+    final index = notifications.indexWhere((n) => n.id == id);
+    if (index != -1) {
+      notifications[index].isRead = !notifications[index].isRead;
+    }
+  }
 }

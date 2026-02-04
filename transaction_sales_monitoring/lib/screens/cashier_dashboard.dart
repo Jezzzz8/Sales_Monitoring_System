@@ -1,9 +1,11 @@
 // ignore_for_file: invalid_use_of_protected_member, unused_field
 
 import 'package:flutter/material.dart';
+import '../utils/theme_provider.dart';
 import '../utils/responsive.dart';
 import '../models/notifications_data.dart';
 import '../widgets/notifications_dialog.dart';
+import '../widgets/sidebar.dart';
 import 'pos_transaction.dart';
 import 'transaction_monitoring.dart';
 import 'sales_monitoring.dart';
@@ -30,11 +32,41 @@ class _CashierDashboardState extends State<CashierDashboard> {
   bool _isLoadingSettings = true;
 
   @override
-  void initState() {
-    super.initState();
-    _loadCurrentUser();
-    _loadSettings();
+void initState() {
+  super.initState();
+  _loadCurrentUser();
+  _loadSettings();
+  
+  // Listen for settings changes
+  SettingsService.notifier.addListener(_onSettingsChanged);
+}
+
+@override
+void dispose() {
+  // Remove listener when widget is disposed
+  SettingsService.notifier.removeListener(_onSettingsChanged);
+  super.dispose();
+}
+
+void _onSettingsChanged() {
+  if (mounted) {
+    setState(() {
+      _settings = SettingsService.notifier.currentSettings;
+    });
   }
+}
+
+Future<void> _loadSettings() async {
+  setState(() => _isLoadingSettings = true);
+  try {
+    // Get initial settings
+    _settings = await SettingsService.loadSettings();
+  } catch (e) {
+    print('Error loading settings: $e');
+    _settings = AppSettings();
+  }
+  setState(() => _isLoadingSettings = false);
+}
 
   Future<void> _loadCurrentUser() async {
     final user = await AuthService.getCurrentUser();
@@ -43,19 +75,10 @@ class _CashierDashboardState extends State<CashierDashboard> {
     });
   }
 
-  Future<void> _loadSettings() async {
-    setState(() => _isLoadingSettings = true);
-    try {
-      _settings = await SettingsService.loadSettings();
-    } catch (e) {
-      print('Error loading settings in cashier dashboard: $e');
-      _settings = AppSettings();
-    }
-    setState(() => _isLoadingSettings = false);
-  }
-
   Color _getPrimaryColor() {
-    return _settings!.primaryColorValue;
+    // Use watch to listen for theme changes
+    final themeProvider = ThemeProvider.watch(context);
+    return _settings?.primaryColorValue ?? themeProvider.primaryColor;
   }
 
   Widget _getCurrentScreen() {
@@ -447,7 +470,8 @@ class CashierDashboardHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
+    final theme = ThemeProvider.of(context); // Use theme provider
+    final primaryColor = theme.primaryColor;
     
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -463,7 +487,7 @@ class CashierDashboardHome extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Welcome Section
+                // Welcome Section - USING THEME COLORS
                 Padding(
                   padding: Responsive.getSectionPadding(context),
                   child: Card(
@@ -487,7 +511,7 @@ class CashierDashboardHome extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: Responsive.getTitleFontSize(context),
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.black87,
+                                    color: theme.getTextColor(emphasized: true), // USING THEME TEXT COLOR
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -495,7 +519,7 @@ class CashierDashboardHome extends StatelessWidget {
                                   "POS System • Sales Monitoring • Transaction History",
                                   style: TextStyle(
                                     fontSize: Responsive.getBodyFontSize(context),
-                                    color: Colors.grey.shade600,
+                                    color: theme.getSubtitleColor(), // USING THEME SUBTITLE COLOR
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -509,7 +533,7 @@ class CashierDashboardHome extends StatelessWidget {
                   ),
                 ),
 
-                // TODAY'S SUMMARY (Top Section - 3 items)
+                // TODAY'S SUMMARY - Update to use theme colors
                 Responsive.buildResponsiveCardGrid(
                   context: context,
                   title: "TODAY'S SUMMARY",
@@ -531,7 +555,7 @@ class CashierDashboardHome extends StatelessWidget {
                   ],
                 ),
 
-                // POS QUICK ACTIONS (Bottom Section - 4 items)
+                // POS QUICK ACTIONS - Update to use theme colors
                 Responsive.buildResponsiveCardGrid(
                   context: context,
                   title: "POS QUICK ACTIONS",
@@ -540,7 +564,7 @@ class CashierDashboardHome extends StatelessWidget {
                   cards: [
                     _buildActionCard(
                       "New Sale", "Start POS", 
-                      Icons.add_circle, primaryColor, context,
+                      Icons.add_circle, Colors.blue, context,
                       onTap: () {
                         final state = context.findAncestorStateOfType<_CashierDashboardState>();
                         state?.setState(() {
@@ -597,6 +621,8 @@ class CashierDashboardHome extends StatelessWidget {
 
   Widget _buildOverviewCard(String title, String value, IconData icon, Color color, 
       BuildContext context) {
+    final theme = ThemeProvider.of(context);
+    
     return Container(
       constraints: BoxConstraints(
         minHeight: 100,
@@ -622,7 +648,7 @@ class CashierDashboardHome extends StatelessWidget {
             style: TextStyle(
               fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: theme.getTextColor(emphasized: true), // USING THEME TEXT COLOR
             ),
             textAlign: TextAlign.center,
             maxLines: 2,
@@ -645,6 +671,8 @@ class CashierDashboardHome extends StatelessWidget {
 
   Widget _buildActionCard(String title, String subtitle, IconData icon, Color color, 
       BuildContext context, {VoidCallback? onTap}) {
+    final theme = ThemeProvider.of(context);
+    
     final cardContent = Container(
       constraints: BoxConstraints(
         minHeight: 80,
@@ -670,7 +698,7 @@ class CashierDashboardHome extends StatelessWidget {
             style: TextStyle(
               fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14),
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: theme.getTextColor(emphasized: true), // USING THEME TEXT COLOR
             ),
             textAlign: TextAlign.center,
             maxLines: 2,
@@ -682,7 +710,7 @@ class CashierDashboardHome extends StatelessWidget {
               subtitle,
               style: TextStyle(
                 fontSize: Responsive.getFontSize(context, mobile: 8, tablet: 9, desktop: 10),
-                color: Colors.grey.shade600,
+                color: theme.getSubtitleColor(), // USING THEME SUBTITLE COLOR
               ),
               textAlign: TextAlign.center,
               maxLines: 2,
@@ -702,296 +730,5 @@ class CashierDashboardHome extends StatelessWidget {
     }
     
     return cardContent;
-  }
-}
-
-// Cashier Sidebar
-class CashierSidebar extends StatefulWidget {
-  final int selectedIndex;
-  final Function(int) onItemSelected;
-  final User currentUser;
-  final Color primaryColor;
-  final bool isCollapsed; // ADDED
-  final Function()? onToggle; // ADDED
-
-  const CashierSidebar({
-    super.key,
-    required this.selectedIndex,
-    required this.onItemSelected,
-    required this.currentUser,
-    required this.primaryColor,
-    this.isCollapsed = false, // ADDED
-    this.onToggle, // ADDED
-  });
-
-  @override
-  State<CashierSidebar> createState() => _CashierSidebarState();
-}
-
-class _CashierSidebarState extends State<CashierSidebar> {
-  @override
-  Widget build(BuildContext context) {
-    // ADDED: Collapsed sidebar support
-    if (widget.isCollapsed) {
-      return Container(
-        width: 70,
-        color: Colors.white,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: widget.primaryColor,
-              child: Icon(
-                widget.currentUser.roleIcon,
-                color: Colors.white,
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  _buildCollapsedNavItem(index: 0, icon: Icons.dashboard, isSelected: widget.selectedIndex == 0),
-                  _buildCollapsedNavItem(index: 1, icon: Icons.point_of_sale, isSelected: widget.selectedIndex == 1),
-                  _buildCollapsedNavItem(index: 2, icon: Icons.receipt_long, isSelected: widget.selectedIndex == 2),
-                  _buildCollapsedNavItem(index: 3, icon: Icons.trending_up, isSelected: widget.selectedIndex == 3),
-                  const SizedBox(height: 16),
-                  _buildCollapsedNavItem(index: 4, icon: Icons.settings, isSelected: widget.selectedIndex == 4),
-                  _buildCollapsedNavItem(index: 5, icon: Icons.notifications, isSelected: widget.selectedIndex == 5),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              child: IconButton(
-                onPressed: () async {
-                  await showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Logout'),
-                      content: const Text('Are you sure you want to logout?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () async {
-                            AuthService.logout();
-                            Navigator.pushReplacementNamed(context, '/login');
-                          },
-                          child: const Text(
-                            'Logout',
-                            style: TextStyle(color: Colors.red),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.logout, color: Colors.red, size: 24),
-                tooltip: 'Logout',
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      width: 250,
-      color: Colors.white,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            color: widget.primaryColor,
-            child: Column(
-              children: [
-                Icon(
-                  widget.currentUser.roleIcon,
-                  size: 50,
-                  color: Colors.white,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  widget.currentUser.fullName,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    widget.currentUser.roleDisplayName,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                _buildNavItem(index: 0, icon: Icons.dashboard, label: 'Dashboard', isSelected: widget.selectedIndex == 0),
-                const Divider(height: 1),
-                const Padding(
-                  padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
-                  child: Text(
-                    'CASHIER FUNCTIONS',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ),
-                _buildNavItem(index: 1, icon: Icons.point_of_sale, label: 'POS Transaction', isSelected: widget.selectedIndex == 1),
-                _buildNavItem(index: 2, icon: Icons.receipt_long, label: 'Transaction History', isSelected: widget.selectedIndex == 2),
-                _buildNavItem(index: 3, icon: Icons.trending_up, label: 'Sales Monitoring', isSelected: widget.selectedIndex == 3),
-                const Divider(height: 1),
-                const Padding(
-                  padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
-                  child: Text(
-                    'SYSTEM',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ),
-                _buildNavItem(index: 4, icon: Icons.settings, label: 'Settings', isSelected: widget.selectedIndex == 4),
-                _buildNavItem(index: 5, icon: Icons.notifications, label: 'Notifications', isSelected: widget.selectedIndex == 5, showBadge: true),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: ElevatedButton.icon(
-              onPressed: () async {
-                await showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Logout'),
-                    content: const Text('Are you sure you want to logout?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          AuthService.logout();
-                          Navigator.pushReplacementNamed(context, '/login');
-                        },
-                        child: const Text(
-                          'Logout',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-              ),
-              icon: const Icon(Icons.logout, size: 20),
-              label: const Text('LOGOUT'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required int index,
-    required IconData icon,
-    required String label,
-    required bool isSelected,
-    bool showBadge = false,
-  }) {
-    return ListTile(
-      leading: Stack(
-        children: [
-          Icon(icon, color: isSelected ? widget.primaryColor : Colors.grey),
-          if (showBadge && index == 5)
-            Positioned(
-              right: 0,
-              top: 0,
-              child: Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-        ],
-      ),
-      title: Text(
-        label,
-        style: TextStyle(
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          color: isSelected ? widget.primaryColor : Colors.black87,
-        ),
-      ),
-      tileColor: isSelected ? widget.primaryColor.withOpacity(0.1) : null,
-      selected: isSelected,
-      onTap: () => widget.onItemSelected(index),
-    );
-  }
-
-  // ADDED: Collapsed navigation item
-  Widget _buildCollapsedNavItem({
-    required int index,
-    required IconData icon,
-    required bool isSelected,
-  }) {
-    return Container(
-      margin: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: isSelected ? widget.primaryColor.withOpacity(0.2) : null,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: IconButton(
-        icon: Icon(
-          icon,
-          color: isSelected ? widget.primaryColor : Colors.grey,
-        ),
-        onPressed: () => widget.onItemSelected(index),
-        tooltip: _getTooltip(index),
-      ),
-    );
-  }
-
-  // ADDED: Tooltip for collapsed items
-  String _getTooltip(int index) {
-    switch (index) {
-      case 0: return 'Dashboard';
-      case 1: return 'POS Transaction';
-      case 2: return 'Transaction History';
-      case 3: return 'Sales Monitoring';
-      case 4: return 'Settings';
-      case 5: return 'Notifications';
-      default: return '';
-    }
   }
 }

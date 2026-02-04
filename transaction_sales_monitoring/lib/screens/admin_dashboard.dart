@@ -1,10 +1,12 @@
 // ignore_for_file: unused_field, unused_import
 
 import 'package:flutter/material.dart';
-import 'package:transaction_sales_monitoring/models/user_model.dart';
-import 'package:transaction_sales_monitoring/screens/cashier_dashboard.dart';
-import 'package:transaction_sales_monitoring/screens/owner_dashboard.dart';
-import 'package:transaction_sales_monitoring/screens/staff_dashboard.dart';
+import '../utils/app_theme.dart';
+import '../utils/theme_provider.dart';
+import '../models/user_model.dart';
+import 'cashier_dashboard.dart';
+import 'owner_dashboard.dart';
+import 'staff_dashboard.dart';
 import '../widgets/sidebar.dart';
 import '../utils/responsive.dart';
 import '../models/notifications_data.dart';
@@ -40,24 +42,43 @@ class _AdminDashboardState extends State<AdminDashboard> {
     super.initState();
     _loadCurrentUser();
     _loadSettings();
+    
+    // Listen for settings changes
+    SettingsService.notifier.addListener(_onSettingsChanged);
   }
+
+  @override
+  void dispose() {
+    // Remove listener when widget is disposed
+    SettingsService.notifier.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
+
+  void _onSettingsChanged() {
+    if (mounted) {
+      setState(() {
+        _settings = SettingsService.notifier.currentSettings;
+      });
+    }
+  }
+
+Future<void> _loadSettings() async {
+  setState(() => _isLoadingSettings = true);
+  try {
+    // Get initial settings
+    _settings = await SettingsService.loadSettings();
+  } catch (e) {
+    print('Error loading settings: $e');
+    _settings = AppSettings();
+  }
+  setState(() => _isLoadingSettings = false);
+}
 
   Future<void> _loadCurrentUser() async {
     final user = await AuthService.getCurrentUser();
     setState(() {
       _currentUser = user;
     });
-  }
-
-  Future<void> _loadSettings() async {
-    setState(() => _isLoadingSettings = true);
-    try {
-      _settings = await SettingsService.loadSettings();
-    } catch (e) {
-      print('Error loading settings in dashboard: $e');
-      _settings = AppSettings();
-    }
-    setState(() => _isLoadingSettings = false);
   }
 
   // Define screens based on selected index (FIXED: Now returns actual screens)
@@ -86,7 +107,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Color _getPrimaryColor() {
-    return _settings!.primaryColorValue;
+    final themeProvider = ThemeProvider.watch(context);
+    return _settings?.primaryColorValue ?? themeProvider.primaryColor;
   }
 
   @override
@@ -501,7 +523,8 @@ class AdminDashboardHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
+    final theme = ThemeProvider.of(context);
+    final primaryColor = theme.primaryColor;
     
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -517,19 +540,33 @@ class AdminDashboardHome extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Welcome Section
+                // Welcome Section with improved design - USING THEME COLOR
                 Padding(
                   padding: Responsive.getSectionPadding(context),
                   child: Card(
                     elevation: 3,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                        color: primaryColor.withOpacity(0.3),
+                        width: 2,
+                      ),
+                    ),
                     child: Padding(
                       padding: Responsive.getCardPadding(context),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.admin_panel_settings,
-                            size: Responsive.getIconSize(context, multiplier: 2.0),
-                            color: primaryColor,
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: primaryColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.admin_panel_settings,
+                              size: Responsive.getIconSize(context, multiplier: 1.8),
+                              color: primaryColor,
+                            ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
@@ -541,18 +578,39 @@ class AdminDashboardHome extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: Responsive.getTitleFontSize(context),
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.black87,
+                                    color: theme.getTextColor(emphasized: true), // USING THEME TEXT COLOR
                                   ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  "Full System Access • User Management",
+                                  "Full System Access • User Management • Business Oversight",
                                   style: TextStyle(
                                     fontSize: Responsive.getBodyFontSize(context),
-                                    color: Colors.grey.shade600,
+                                    color: theme.getSubtitleColor(), // USING THEME SUBTITLE COLOR
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: primaryColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.verified, size: 14, color: primaryColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'ADMIN',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: primaryColor,
+                                  ),
                                 ),
                               ],
                             ),
@@ -563,33 +621,33 @@ class AdminDashboardHome extends StatelessWidget {
                   ),
                 ),
 
-                // SYSTEM OVERVIEW (Top Section - 4 items)
+                // SYSTEM OVERVIEW - Update titles to use theme color
                 Responsive.buildResponsiveCardGrid(
                   context: context,
                   title: "SYSTEM OVERVIEW",
                   titleColor: primaryColor,
                   centerTitle: true,
                   cards: [
-                    _buildOverviewCard(
+                    _buildStatCard(
                       "Total Users", "4", 
-                      Icons.people, primaryColor, context,
+                      Icons.people, Colors.purple, context,
                     ),
-                    _buildOverviewCard(
+                    _buildStatCard(
                       "Active Sessions", "1", 
                       Icons.security, Colors.green, context,
                     ),
-                    _buildOverviewCard(
+                    _buildStatCard(
                       "System Uptime", "99.9%", 
                       Icons.timer, Colors.blue, context,
                     ),
-                    _buildOverviewCard(
+                    _buildStatCard(
                       "Today's Logins", "1", 
                       Icons.login, Colors.orange, context,
                     ),
                   ],
                 ),
 
-                // USER MANAGEMENT (Bottom Section - 2 items)
+                // USER MANAGEMENT - Update titles to use theme color
                 Responsive.buildResponsiveCardGrid(
                   context: context,
                   title: "USER MANAGEMENT",
@@ -597,19 +655,24 @@ class AdminDashboardHome extends StatelessWidget {
                   centerTitle: true,
                   cards: [
                     _buildActionCard(
-                      "Add New User", "Tap to add", 
+                      "Add New User", "Create new account", 
                       Icons.person_add, Colors.green, context,
                       onTap: () => Navigator.pushNamed(context, '/users'),
                     ),
                     _buildActionCard(
-                      "View All Users", "Manage users", 
+                      "View All Users", "Manage permissions", 
                       Icons.list, Colors.blue, context,
+                      onTap: () => Navigator.pushNamed(context, '/users'),
+                    ),
+                    _buildActionCard(
+                      "Role Management", "Assign roles", 
+                      Icons.manage_accounts, Colors.purple, context,
                       onTap: () => Navigator.pushNamed(context, '/users'),
                     ),
                   ],
                 ),
 
-                // SYSTEM MANAGEMENT (Bottom Section - 3 items)
+                // SYSTEM MANAGEMENT - Update titles to use theme color
                 Responsive.buildResponsiveCardGrid(
                   context: context,
                   title: "SYSTEM MANAGEMENT",
@@ -617,18 +680,18 @@ class AdminDashboardHome extends StatelessWidget {
                   centerTitle: true,
                   cards: [
                     _buildActionCard(
-                      "Inventory", "Categories", 
+                      "Inventory", "Monitor stock", 
                       Icons.inventory, Colors.deepOrange, context,
                       onTap: () => Navigator.pushNamed(context, '/inventory-categories'),
                     ),
                     _buildActionCard(
-                      "Products", "Categories", 
+                      "Products", "Manage menu", 
                       Icons.restaurant_menu, Colors.blue, context,
                       onTap: () => Navigator.pushNamed(context, '/product-categories'),
                     ),
                     _buildActionCard(
-                      "Settings", "Configure", 
-                      Icons.settings, primaryColor, context,
+                      "Settings", "Configure system", 
+                      Icons.settings, Colors.purple, context,
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -636,7 +699,51 @@ class AdminDashboardHome extends StatelessWidget {
                         ),
                       ),
                     ),
+                    _buildActionCard(
+                      "Reports", "View analytics", 
+                      Icons.analytics, Colors.teal, context,
+                      onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Reports feature coming soon'),
+                          backgroundColor: primaryColor,
+                        ),
+                      ),
+                    ),
                   ],
+                ),
+
+                // Quick Stats Row - Update to use theme color
+                Padding(
+                  padding: Responsive.getSectionPadding(context),
+                  child: Card(
+                    elevation: 3,
+                    child: Padding(
+                      padding: Responsive.getCardPadding(context),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "QUICK STATS",
+                            style: TextStyle(
+                              fontSize: Responsive.getSubtitleFontSize(context),
+                              fontWeight: FontWeight.bold,
+                              color: primaryColor,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildQuickStatItem("Total Sales", "₱850,000", Icons.attach_money, Colors.green, context),
+                              _buildQuickStatItem("Active Orders", "25", Icons.receipt, Colors.orange, context),
+                              _buildQuickStatItem("Inventory Value", "₱150,000", Icons.inventory, Colors.blue, context),
+                              _buildQuickStatItem("Customers", "45", Icons.people, Colors.purple, context),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
 
                 SizedBox(height: Responsive.getLargeSpacing(context).height),
@@ -648,34 +755,42 @@ class AdminDashboardHome extends StatelessWidget {
     );
   }
 
-  Widget _buildOverviewCard(String title, String value, IconData icon, Color color, 
+    Widget _buildStatCard(String title, String value, IconData icon, Color color, 
       BuildContext context) {
+    final theme = ThemeProvider.of(context);
+    
     return Container(
-      constraints: BoxConstraints(
-        minHeight: 100,
-        maxHeight: 120,
-      ),
       padding: EdgeInsets.all(Responsive.getFontSize(context, mobile: 8, tablet: 10, desktop: 12)),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            icon, 
-            color: color, 
-            size: Responsive.getIconSize(context, multiplier: 1.5),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: Responsive.getIconSize(context, multiplier: 1.2)),
           ),
           const SizedBox(height: 8),
           Text(
             title,
             style: TextStyle(
-              fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14) * 0.9,
+              color: theme.getSubtitleColor(), // USING THEME SUBTITLE COLOR
+              fontWeight: FontWeight.w500,
             ),
             textAlign: TextAlign.center,
             maxLines: 2,
@@ -685,7 +800,7 @@ class AdminDashboardHome extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
+              fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18) * 0.9,
               fontWeight: FontWeight.bold,
               color: color,
             ),
@@ -696,46 +811,54 @@ class AdminDashboardHome extends StatelessWidget {
     );
   }
 
-  Widget _buildActionCard(String title, String subtitle, IconData icon, Color color, 
+    Widget _buildActionCard(String title, String subtitle, IconData icon, Color color, 
       BuildContext context, {VoidCallback? onTap}) {
+    final theme = ThemeProvider.of(context);
+    
     final cardContent = Container(
-      constraints: BoxConstraints(
-        minHeight: 80,
-        maxHeight: 100,
-      ),
-      padding: EdgeInsets.all(Responsive.getFontSize(context, mobile: 6, tablet: 8, desktop: 10)),
+      padding: EdgeInsets.all(Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14) * 0.8),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            icon, 
-            color: color, 
-            size: Responsive.getIconSize(context, multiplier: 1.2),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: Responsive.getIconSize(context, multiplier: 1.2)),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             title,
             style: TextStyle(
-              fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14),
+              fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16) * 0.9,
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: theme.getTextColor(emphasized: true), // USING THEME TEXT COLOR
             ),
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
           if (subtitle.isNotEmpty) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             Text(
               subtitle,
               style: TextStyle(
-                fontSize: Responsive.getFontSize(context, mobile: 8, tablet: 9, desktop: 10),
-                color: Colors.grey.shade600,
+                fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14) * 0.9,
+                color: theme.getSubtitleColor(), // USING THEME SUBTITLE COLOR
               ),
               textAlign: TextAlign.center,
               maxLines: 2,
@@ -749,11 +872,44 @@ class AdminDashboardHome extends StatelessWidget {
     if (onTap != null) {
       return InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         child: cardContent,
       );
     }
     
     return cardContent;
+  }
+
+  Widget _buildQuickStatItem(String title, String value, IconData icon, Color color, BuildContext context) {
+    final theme = ThemeProvider.of(context);
+    
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 10,
+            color: theme.getSubtitleColor(), // USING THEME SUBTITLE COLOR
+          ),
+        ),
+      ],
+    );
   }
 }

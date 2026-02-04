@@ -110,7 +110,37 @@ class _AdminLoginState extends State<AdminLogin> {
     );
   }
 
+  // Helper method to get text color based on theme
+  Color _getTextColor() {
+    final brightness = Theme.of(context).brightness;
+    return brightness == Brightness.dark ? Colors.white : Colors.black;
+  }
+
+  // Helper method to get subtitle color based on theme
+  Color _getSubtitleColor() {
+    final brightness = Theme.of(context).brightness;
+    return brightness == Brightness.dark ? Colors.grey.shade400 : Colors.grey.shade700;
+  }
+
+  // Helper method to get background color based on theme
+  Color _getInputBackgroundColor() {
+    final brightness = Theme.of(context).brightness;
+    return brightness == Brightness.dark ? Colors.grey.shade900 : Colors.grey.shade50;
+  }
+
+  // Helper method to get border color based on theme
+  Color _getBorderColor() {
+    final brightness = Theme.of(context).brightness;
+    return brightness == Brightness.dark ? Colors.grey.shade700 : Colors.grey.shade300;
+  }
+
   Widget _buildDesktopTabletUI() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final textColor = _getTextColor();
+    final subtitleColor = _getSubtitleColor();
+    final inputBgColor = _getInputBackgroundColor();
+    final borderColor = _getBorderColor();
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -171,11 +201,11 @@ class _AdminLoginState extends State<AdminLogin> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
                         "Secure Role-Based Access System",
                         style: TextStyle(
                           fontSize: 16,
-                          color: Colors.grey,
+                          color: subtitleColor,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -189,14 +219,17 @@ class _AdminLoginState extends State<AdminLogin> {
                             // Username Field
                             TextFormField(
                               controller: _usernameController,
-                              style: const TextStyle(fontSize: 16),
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: textColor, // Text color adapts to theme
+                              ),
                               decoration: InputDecoration(
                                 labelText: 'Username',
                                 labelStyle: const TextStyle(color: Colors.deepOrange),
                                 prefixIcon: const Icon(Icons.person, color: Colors.deepOrange),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Colors.grey),
+                                  borderSide: BorderSide(color: borderColor),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -204,10 +237,10 @@ class _AdminLoginState extends State<AdminLogin> {
                                 ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(color: Colors.grey.shade300),
+                                  borderSide: BorderSide(color: borderColor),
                                 ),
                                 filled: true,
-                                fillColor: Colors.grey.shade50,
+                                fillColor: inputBgColor,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                   vertical: 18,
@@ -226,7 +259,10 @@ class _AdminLoginState extends State<AdminLogin> {
                             TextFormField(
                               controller: _passwordController,
                               obscureText: _obscurePassword,
-                              style: const TextStyle(fontSize: 16),
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: textColor, // Text color adapts to theme
+                              ),
                               decoration: InputDecoration(
                                 labelText: 'Password',
                                 labelStyle: const TextStyle(color: Colors.deepOrange),
@@ -246,7 +282,7 @@ class _AdminLoginState extends State<AdminLogin> {
                                 ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Colors.grey),
+                                  borderSide: BorderSide(color: borderColor),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -254,10 +290,10 @@ class _AdminLoginState extends State<AdminLogin> {
                                 ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(color: Colors.grey.shade300),
+                                  borderSide: BorderSide(color: borderColor),
                                 ),
                                 filled: true,
-                                fillColor: Colors.grey.shade50,
+                                fillColor: inputBgColor,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                   vertical: 18,
@@ -292,11 +328,11 @@ class _AdminLoginState extends State<AdminLogin> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                const Text(
+                                Text(
                                   'Remember me',
                                   style: TextStyle(
                                     fontSize: 15,
-                                    color: Colors.grey,
+                                    color: subtitleColor,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
@@ -354,7 +390,7 @@ class _AdminLoginState extends State<AdminLogin> {
                         decoration: BoxDecoration(
                           border: Border(
                             top: BorderSide(
-                              color: Colors.grey.shade200,
+                              color: borderColor,
                               width: 1,
                             ),
                           ),
@@ -372,7 +408,7 @@ class _AdminLoginState extends State<AdminLogin> {
                               'Secure Authentication System',
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Colors.grey.shade700,
+                                color: subtitleColor,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -382,11 +418,11 @@ class _AdminLoginState extends State<AdminLogin> {
                       
                       // Additional Info
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         'Version 1.0.0 • © 2024 Gene\'s Lechon',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey,
+                          color: subtitleColor,
                         ),
                       ),
                     ],
@@ -401,6 +437,11 @@ class _AdminLoginState extends State<AdminLogin> {
   }
 
   Widget _buildMobileUI() {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final textColor = _getTextColor();
+    final subtitleColor = _getSubtitleColor();
+    final inputBgColor = _getInputBackgroundColor();
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -481,7 +522,7 @@ class _AdminLoginState extends State<AdminLogin> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            const Text(
+                            Text(
                               "Welcome Back",
                               style: TextStyle(
                                 fontSize: 22,
@@ -490,11 +531,11 @@ class _AdminLoginState extends State<AdminLogin> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            const Text(
+                            Text(
                               "Please sign in to continue",
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Colors.grey,
+                                color: subtitleColor,
                               ),
                             ),
                             const SizedBox(height: 32),
@@ -502,7 +543,10 @@ class _AdminLoginState extends State<AdminLogin> {
                             // Username Field
                             TextFormField(
                               controller: _usernameController,
-                              style: const TextStyle(fontSize: 16),
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: textColor, // Text color adapts to theme
+                              ),
                               decoration: InputDecoration(
                                 labelText: 'Username',
                                 labelStyle: const TextStyle(color: Colors.deepOrange),
@@ -520,7 +564,7 @@ class _AdminLoginState extends State<AdminLogin> {
                                   borderSide: const BorderSide(color: Colors.deepOrange, width: 2),
                                 ),
                                 filled: true,
-                                fillColor: Colors.grey.shade100,
+                                fillColor: inputBgColor,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                   vertical: 16,
@@ -539,7 +583,10 @@ class _AdminLoginState extends State<AdminLogin> {
                             TextFormField(
                               controller: _passwordController,
                               obscureText: _obscurePassword,
-                              style: const TextStyle(fontSize: 16),
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: textColor, // Text color adapts to theme
+                              ),
                               decoration: InputDecoration(
                                 labelText: 'Password',
                                 labelStyle: const TextStyle(color: Colors.deepOrange),
@@ -570,7 +617,7 @@ class _AdminLoginState extends State<AdminLogin> {
                                   borderSide: const BorderSide(color: Colors.deepOrange, width: 2),
                                 ),
                                 filled: true,
-                                fillColor: Colors.grey.shade100,
+                                fillColor: inputBgColor,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                   vertical: 16,
@@ -601,11 +648,11 @@ class _AdminLoginState extends State<AdminLogin> {
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                 ),
-                                const Text(
+                                Text(
                                   'Remember me',
                                   style: TextStyle(
                                     fontSize: 14,
-                                    color: Colors.grey,
+                                    color: subtitleColor,
                                   ),
                                 ),
                                 const Spacer(),

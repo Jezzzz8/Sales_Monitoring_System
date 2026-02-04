@@ -55,6 +55,31 @@ class SettingsConstants {
     'CNY',
   ];
 
+  // Color descriptions
+  static Map<String, String> get colorDescriptions {
+    return {
+      'Deep Orange': 'Warm and energetic (Default)',
+      'Blue': 'Professional and trustworthy',
+      'Green': 'Fresh and natural',
+      'Purple': 'Creative and luxurious',
+      'Red': 'Bold and attention-grabbing',
+      'Teal': 'Modern and balanced',
+      'Indigo': 'Serious and reliable',
+      'Pink': 'Playful and friendly',
+      'Cyan': 'Clean and refreshing',
+      'Amber': 'Warm and inviting',
+    };
+  }
+
+  // Theme mode descriptions
+  static Map<String, String> get themeModeDescriptions {
+    return {
+      'Light': 'Bright theme, easy to read in well-lit environments',
+      'Dark': 'Reduces eye strain, saves battery on OLED screens',
+      'System': 'Automatically matches your device theme settings',
+    };
+  }
+
   // Color mapping
   static Map<String, String> get colorHexValues {
     return {

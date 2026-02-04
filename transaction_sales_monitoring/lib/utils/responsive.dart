@@ -387,8 +387,6 @@ class Responsive {
     return 18;
   }
 
-  // =========== NEW METHODS ===========
-
   static EdgeInsets getSectionPadding(BuildContext context) {
     final isMobileVal = isMobile(context);
     final isTabletVal = isTablet(context);

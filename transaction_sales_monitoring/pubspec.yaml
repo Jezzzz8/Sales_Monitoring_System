@@ -19,6 +19,8 @@ dependencies:
   webview_flutter_wkwebview: ^3.5.1
   lottie: ^2.7.0
   crypto: ^3.0.7
+  provider: ^6.1.5+1
+  connectivity_plus: ^7.0.0
 
 dev_dependencies:
   flutter_test:

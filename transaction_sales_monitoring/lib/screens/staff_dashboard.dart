@@ -1,9 +1,11 @@
 // ignore_for_file: unused_field, invalid_use_of_protected_member
 
 import 'package:flutter/material.dart';
+import '../utils/theme_provider.dart';
 import '../utils/responsive.dart';
 import '../models/notifications_data.dart';
 import '../widgets/notifications_dialog.dart';
+import '../widgets/sidebar.dart';
 import 'inventory_monitoring.dart';
 import 'product_management.dart';
 import '../services/auth_service.dart';
@@ -29,11 +31,41 @@ class _StaffDashboardState extends State<StaffDashboard> {
   bool _isLoadingSettings = true;
 
   @override
-  void initState() {
-    super.initState();
-    _loadCurrentUser();
-    _loadSettings();
+void initState() {
+  super.initState();
+  _loadCurrentUser();
+  _loadSettings();
+  
+  // Listen for settings changes
+  SettingsService.notifier.addListener(_onSettingsChanged);
+}
+
+@override
+void dispose() {
+  // Remove listener when widget is disposed
+  SettingsService.notifier.removeListener(_onSettingsChanged);
+  super.dispose();
+}
+
+void _onSettingsChanged() {
+  if (mounted) {
+    setState(() {
+      _settings = SettingsService.notifier.currentSettings;
+    });
   }
+}
+
+Future<void> _loadSettings() async {
+  setState(() => _isLoadingSettings = true);
+  try {
+    // Get initial settings
+    _settings = await SettingsService.loadSettings();
+  } catch (e) {
+    print('Error loading settings: $e');
+    _settings = AppSettings();
+  }
+  setState(() => _isLoadingSettings = false);
+}
 
   Future<void> _loadCurrentUser() async {
     final user = await AuthService.getCurrentUser();
@@ -42,21 +74,10 @@ class _StaffDashboardState extends State<StaffDashboard> {
     });
   }
 
-  Future<void> _loadSettings() async {
-    setState(() => _isLoadingSettings = true);
-    try {
-      _settings = await SettingsService.loadSettings();
-    } catch (e) {
-      print('Error loading settings in staff dashboard: $e');
-      _settings = AppSettings();
-    }
-    setState(() => _isLoadingSettings = false);
-  }
-
   Color _getPrimaryColor() {
-    return _settings!.primaryColorValue;
+    final themeProvider = ThemeProvider.watch(context);
+    return _settings?.primaryColorValue ?? themeProvider.primaryColor;
   }
-
   Widget _getCurrentScreen() {
     switch (_selectedIndex) {
       case 0:
@@ -439,7 +460,8 @@ class StaffDashboardHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
+    final theme = ThemeProvider.of(context); // Use theme provider
+    final primaryColor = theme.primaryColor;
     
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -455,7 +477,7 @@ class StaffDashboardHome extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Welcome Section
+                // Welcome Section - USING THEME COLORS
                 Padding(
                   padding: Responsive.getSectionPadding(context),
                   child: Card(
@@ -479,7 +501,7 @@ class StaffDashboardHome extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: Responsive.getTitleFontSize(context),
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.black87,
+                                    color: theme.getTextColor(emphasized: true), // USING THEME TEXT COLOR
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -487,7 +509,7 @@ class StaffDashboardHome extends StatelessWidget {
                                   "Inventory Management • Product Management",
                                   style: TextStyle(
                                     fontSize: Responsive.getBodyFontSize(context),
-                                    color: Colors.grey.shade600,
+                                    color: theme.getSubtitleColor(), // USING THEME SUBTITLE COLOR
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -501,7 +523,7 @@ class StaffDashboardHome extends StatelessWidget {
                   ),
                 ),
 
-                // INVENTORY OVERVIEW (Top Section - 3 items)
+                // INVENTORY OVERVIEW - Update to use theme colors
                 Responsive.buildResponsiveCardGrid(
                   context: context,
                   title: "INVENTORY OVERVIEW",
@@ -523,7 +545,7 @@ class StaffDashboardHome extends StatelessWidget {
                   ],
                 ),
 
-                // INVENTORY QUICK ACTIONS (Bottom Section - 4 items)
+                // INVENTORY QUICK ACTIONS - Update to use theme colors
                 Responsive.buildResponsiveCardGrid(
                   context: context,
                   title: "INVENTORY QUICK ACTIONS",
@@ -532,7 +554,7 @@ class StaffDashboardHome extends StatelessWidget {
                   cards: [
                     _buildActionCard(
                       "Check Inventory", "View stock", 
-                      Icons.inventory, primaryColor, context,
+                      Icons.inventory, Colors.purple, context,
                       onTap: () {
                         final state = context.findAncestorStateOfType<_StaffDashboardState>();
                         state?.setState(() {
@@ -577,7 +599,7 @@ class StaffDashboardHome extends StatelessWidget {
                   ],
                 ),
 
-                // Inventory Reminders - Separate section
+                // Inventory Reminders - Update to use theme colors
                 Padding(
                   padding: Responsive.getSectionPadding(context),
                   child: Column(
@@ -637,6 +659,8 @@ class StaffDashboardHome extends StatelessWidget {
 
   Widget _buildOverviewCard(String title, String value, IconData icon, Color color, 
       BuildContext context) {
+    final theme = ThemeProvider.of(context);
+    
     return Container(
       constraints: BoxConstraints(
         minHeight: 100,
@@ -662,7 +686,7 @@ class StaffDashboardHome extends StatelessWidget {
             style: TextStyle(
               fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: theme.getTextColor(emphasized: true), // USING THEME TEXT COLOR
             ),
             textAlign: TextAlign.center,
             maxLines: 2,
@@ -685,6 +709,8 @@ class StaffDashboardHome extends StatelessWidget {
 
   Widget _buildActionCard(String title, String subtitle, IconData icon, Color color, 
       BuildContext context, {VoidCallback? onTap}) {
+    final theme = ThemeProvider.of(context);
+    
     final cardContent = Container(
       constraints: BoxConstraints(
         minHeight: 80,
@@ -710,7 +736,7 @@ class StaffDashboardHome extends StatelessWidget {
             style: TextStyle(
               fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14),
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: theme.getTextColor(emphasized: true), // USING THEME TEXT COLOR
             ),
             textAlign: TextAlign.center,
             maxLines: 2,
@@ -722,7 +748,7 @@ class StaffDashboardHome extends StatelessWidget {
               subtitle,
               style: TextStyle(
                 fontSize: Responsive.getFontSize(context, mobile: 8, tablet: 9, desktop: 10),
-                color: Colors.grey.shade600,
+                color: theme.getSubtitleColor(), // USING THEME SUBTITLE COLOR
               ),
               textAlign: TextAlign.center,
               maxLines: 2,
@@ -745,6 +771,8 @@ class StaffDashboardHome extends StatelessWidget {
   }
 
   Widget _buildReminderItem(IconData icon, Color color, String text, BuildContext context) {
+    final theme = ThemeProvider.of(context);
+    
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -757,299 +785,12 @@ class StaffDashboardHome extends StatelessWidget {
               text,
               style: TextStyle(
                 fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
+                color: theme.getTextColor(), // USING THEME TEXT COLOR
               ),
             ),
           ),
         ],
-      ),
+      )
     );
-  }
-}
-
-// Staff Sidebar
-class StaffSidebar extends StatefulWidget {
-  final int selectedIndex;
-  final Function(int) onItemSelected;
-  final User currentUser;
-  final Color primaryColor;
-  final bool isCollapsed; // ADDED
-  final Function()? onToggle; // ADDED
-
-  const StaffSidebar({
-    super.key,
-    required this.selectedIndex,
-    required this.onItemSelected,
-    required this.currentUser,
-    required this.primaryColor,
-    this.isCollapsed = false, // ADDED
-    this.onToggle, // ADDED
-  });
-
-  @override
-  State<StaffSidebar> createState() => _StaffSidebarState();
-}
-
-class _StaffSidebarState extends State<StaffSidebar> {
-  @override
-  Widget build(BuildContext context) {
-    // ADDED: Collapsed sidebar support
-    if (widget.isCollapsed) {
-      return Container(
-        width: 70,
-        color: Colors.white,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: widget.primaryColor,
-              child: Icon(
-                widget.currentUser.roleIcon,
-                color: Colors.white,
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  _buildCollapsedNavItem(index: 0, icon: Icons.dashboard, isSelected: widget.selectedIndex == 0),
-                  _buildCollapsedNavItem(index: 1, icon: Icons.inventory, isSelected: widget.selectedIndex == 1),
-                  _buildCollapsedNavItem(index: 2, icon: Icons.restaurant_menu, isSelected: widget.selectedIndex == 2),
-                  const SizedBox(height: 16),
-                  _buildCollapsedNavItem(index: 3, icon: Icons.settings, isSelected: widget.selectedIndex == 3),
-                  _buildCollapsedNavItem(index: 4, icon: Icons.notifications, isSelected: widget.selectedIndex == 4),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              child: IconButton(
-                onPressed: () async {
-                  await showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Logout'),
-                      content: const Text('Are you sure you want to logout?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancel'),
-                        ),
-                        TextButton(
-                          onPressed: () async {
-                            AuthService.logout();
-                            Navigator.pushReplacementNamed(context, '/login');
-                          },
-                          child: const Text(
-                            'Logout',
-                            style: TextStyle(color: Colors.red),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.logout, color: Colors.red, size: 24),
-                tooltip: 'Logout',
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      width: 250,
-      color: Colors.white,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            color: widget.primaryColor,
-            child: Column(
-              children: [
-                Icon(
-                  widget.currentUser.roleIcon,
-                  size: 50,
-                  color: Colors.white,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  widget.currentUser.fullName,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    widget.currentUser.roleDisplayName,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                _buildNavItem(index: 0, icon: Icons.dashboard, label: 'Dashboard', isSelected: widget.selectedIndex == 0),
-                const Divider(height: 1),
-                const Padding(
-                  padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
-                  child: Text(
-                    'INVENTORY FUNCTIONS',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ),
-                _buildNavItem(index: 1, icon: Icons.inventory, label: 'Inventory Monitoring', isSelected: widget.selectedIndex == 1),
-                _buildNavItem(index: 2, icon: Icons.restaurant_menu, label: 'Product Management', isSelected: widget.selectedIndex == 2),
-                const Divider(height: 1),
-                const Padding(
-                  padding: EdgeInsets.only(left: 16, top: 16, bottom: 8),
-                  child: Text(
-                    'SYSTEM',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ),
-                _buildNavItem(index: 3, icon: Icons.settings, label: 'Settings', isSelected: widget.selectedIndex == 3),
-                _buildNavItem(index: 4, icon: Icons.notifications, label: 'Notifications', isSelected: widget.selectedIndex == 4, showBadge: true),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: ElevatedButton.icon(
-              onPressed: () async {
-                await showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Logout'),
-                    content: const Text('Are you sure you want to logout?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          AuthService.logout();
-                          Navigator.pushReplacementNamed(context, '/login');
-                        },
-                        child: const Text(
-                          'Logout',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-              ),
-              icon: const Icon(Icons.logout, size: 20),
-              label: const Text('LOGOUT'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required int index,
-    required IconData icon,
-    required String label,
-    required bool isSelected,
-    bool showBadge = false,
-  }) {
-    return ListTile(
-      leading: Stack(
-        children: [
-          Icon(icon, color: isSelected ? widget.primaryColor : Colors.grey),
-          if (showBadge && index == 4)
-            Positioned(
-              right: 0,
-              top: 0,
-              child: Container(
-                width: 10,
-                height: 10,
-                decoration: const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-        ],
-      ),
-      title: Text(
-        label,
-        style: TextStyle(
-          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-          color: isSelected ? widget.primaryColor : Colors.black87,
-        ),
-      ),
-      tileColor: isSelected ? widget.primaryColor.withOpacity(0.1) : null,
-      selected: isSelected,
-      onTap: () => widget.onItemSelected(index),
-    );
-  }
-
-  // ADDED: Collapsed navigation item
-  Widget _buildCollapsedNavItem({
-    required int index,
-    required IconData icon,
-    required bool isSelected,
-  }) {
-    return Container(
-      margin: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: isSelected ? widget.primaryColor.withOpacity(0.2) : null,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: IconButton(
-        icon: Icon(
-          icon,
-          color: isSelected ? widget.primaryColor : Colors.grey,
-        ),
-        onPressed: () => widget.onItemSelected(index),
-        tooltip: _getTooltip(index),
-      ),
-    );
-  }
-
-  // ADDED: Tooltip for collapsed items
-  String _getTooltip(int index) {
-    switch (index) {
-      case 0: return 'Dashboard';
-      case 1: return 'Inventory Monitoring';
-      case 2: return 'Product Management';
-      case 3: return 'Settings';
-      case 4: return 'Notifications';
-      default: return '';
-    }
   }
 }

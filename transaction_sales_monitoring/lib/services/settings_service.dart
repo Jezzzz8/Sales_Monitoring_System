@@ -1,14 +1,30 @@
+import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/settings_model.dart';
+
+class SettingsNotifier extends ChangeNotifier {
+  AppSettings? _currentSettings;
+  
+  AppSettings? get currentSettings => _currentSettings;
+  
+  void updateSettings(AppSettings newSettings) {
+    _currentSettings = newSettings;
+    notifyListeners();
+  }
+}
 
 class SettingsService {
   static const String _settingsKey = 'app_settings';
   static AppSettings? _cachedSettings;
+  static bool _hasUnsavedChanges = false;
+  static AppSettings? _pendingChanges;
+  static final SettingsNotifier _notifier = SettingsNotifier();
+  static SettingsNotifier get notifier => _notifier;
 
-  // Load settings from local storage
-  static Future<AppSettings> loadSettings() async {
-    // Return cached settings if available
-    if (_cachedSettings != null) {
+  // Load settings from local storage - FORCE RELOAD
+  static Future<AppSettings> loadSettings({bool forceReload = false}) async {
+    if (_cachedSettings != null && !forceReload) {
       return _cachedSettings!;
     }
 
@@ -17,89 +33,37 @@ class SettingsService {
 
     if (settingsJson != null) {
       try {
-        // Parse JSON string
-        final Map<String, dynamic> settingsMap = 
-            Map<String, dynamic>.from(settingsJson.split('&').map((entry) {
-          final parts = entry.split('=');
-          if (parts.length == 2) {
-            return MapEntry(parts[0], parts[1]);
-          }
-          return MapEntry('', '');
-        }).where((entry) => entry.key.isNotEmpty) as Map<dynamic, dynamic>);
-
-        // Convert string values to proper types
-        final Map<String, dynamic> convertedMap = {};
-        
-        for (var entry in settingsMap.entries) {
-          final key = entry.key;
-          final value = entry.value;
-          
-          if (key.endsWith('_bool')) {
-            convertedMap[key.replaceAll('_bool', '')] = value == 'true';
-          } else if (key.endsWith('_int')) {
-            convertedMap[key.replaceAll('_int', '')] = int.tryParse(value) ?? 0;
-          } else if (key.endsWith('_double')) {
-            convertedMap[key.replaceAll('_double', '')] = double.tryParse(value) ?? 0.0;
-          } else {
-            convertedMap[key] = value;
-          }
-        }
-
-        _cachedSettings = AppSettings.fromMap(convertedMap);
+        final Map<String, dynamic> settingsMap = json.decode(settingsJson);
+        _cachedSettings = AppSettings.fromMap(settingsMap);
+        _notifier.updateSettings(_cachedSettings!);
         return _cachedSettings!;
       } catch (e) {
         print('Error loading settings: $e');
-        // Return default settings if there's an error
         _cachedSettings = AppSettings();
+        _notifier.updateSettings(_cachedSettings!);
         return _cachedSettings!;
       }
     } else {
-      // Return default settings if none saved
       _cachedSettings = AppSettings();
+      _notifier.updateSettings(_cachedSettings!);
       return _cachedSettings!;
     }
   }
 
-  // Save settings to local storage
+  // Save settings to local storage - CLEAR CACHE
   static Future<void> saveSettings(AppSettings settings) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
-      // Convert settings to query string format for simple storage
-      final Map<String, String> settingsMap = {};
-      
-      // Add string values
-      settingsMap['primaryColor'] = settings.primaryColor;
-      settingsMap['themeMode'] = settings.themeMode;
-      settingsMap['language'] = settings.language;
-      settingsMap['dateFormat'] = settings.dateFormat;
-      settingsMap['timeFormat'] = settings.timeFormat;
-      settingsMap['currency'] = settings.currency;
-      
-      // Add boolean values with suffix
-      settingsMap['notificationsEnabled_bool'] = settings.notificationsEnabled.toString();
-      settingsMap['emailNotifications_bool'] = settings.emailNotifications.toString();
-      settingsMap['lowStockAlerts_bool'] = settings.lowStockAlerts.toString();
-      settingsMap['soundEffects_bool'] = settings.soundEffects.toString();
-      settingsMap['vibrationFeedback_bool'] = settings.vibrationFeedback.toString();
-      settingsMap['showConfirmationDialogs_bool'] = settings.showConfirmationDialogs.toString();
-      settingsMap['autoPrintReceipts_bool'] = settings.autoPrintReceipts.toString();
-      settingsMap['autoBackup_bool'] = settings.autoBackup.toString();
-      
-      // Add numeric values with suffix
-      settingsMap['receiptCopies_int'] = settings.receiptCopies.toString();
-      settingsMap['taxRate_double'] = settings.taxRate.toString();
-      settingsMap['backupFrequency_int'] = settings.backupFrequency.toString();
-      
-      // Convert to query string
-      final settingsString = settingsMap.entries
-          .map((entry) => '${entry.key}=${entry.value}')
-          .join('&');
-      
-      await prefs.setString(_settingsKey, settingsString);
+      final settingsJson = json.encode(settings.toMap());
+      await prefs.setString(_settingsKey, settingsJson);
       
       // Update cache
       _cachedSettings = settings;
+      _hasUnsavedChanges = false;
+      _pendingChanges = null;
+      
+      // Notify all listeners WITHOUT forcing app rebuild
+      _notifier.updateSettings(settings);
       
       print('Settings saved successfully');
     } catch (e) {
@@ -125,6 +89,8 @@ class SettingsService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_settingsKey);
     _cachedSettings = null;
+    _hasUnsavedChanges = false;
+    _pendingChanges = null;
   }
 
   // Get specific setting value
@@ -234,5 +200,20 @@ class SettingsService {
     }
     
     await saveSettings(updatedSettings);
+  }
+
+  // NEW: Check for unsaved changes
+  static bool get hasUnsavedChanges => _hasUnsavedChanges;
+  
+  static void setPendingChanges(AppSettings settings) {
+    _pendingChanges = settings;
+    _hasUnsavedChanges = true;
+  }
+  
+  static AppSettings? get pendingChanges => _pendingChanges;
+  
+  static void discardPendingChanges() {
+    _pendingChanges = null;
+    _hasUnsavedChanges = false;
   }
 }
