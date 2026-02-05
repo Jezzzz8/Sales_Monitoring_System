@@ -1,10 +1,12 @@
+// lib/models/user_model.dart - FIXED VERSION
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 enum UserRole {
   owner,
   admin,
   cashier,
-  staff,
+  clerk,
 }
 
 class User {
@@ -50,6 +52,44 @@ class User {
     };
   }
 
+  static User fromFirestore(Map<String, dynamic> data, String documentId) {
+    return User(
+      id: documentId,
+      username: data['username'] ?? '',
+      password: data['password'] ?? '',
+      fullName: data['fullName'] ?? '',
+      email: data['email'] ?? '',
+      role: UserRole.values.firstWhere(
+        (e) => e.name == data['role'],
+        orElse: () => UserRole.clerk,
+      ),
+      isActive: data['isActive'] ?? true,
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      updatedAt: data['updatedAt'] != null 
+          ? (data['updatedAt'] as Timestamp).toDate() 
+          : null,
+      phone: data['phone'],
+      address: data['address'],
+    );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'username': username,
+      'password': password,
+      'fullName': fullName,
+      'email': email.toLowerCase(),
+      'role': role.name,
+      'isActive': isActive,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': updatedAt != null 
+          ? Timestamp.fromDate(updatedAt!) 
+          : FieldValue.serverTimestamp(),
+      'phone': phone,
+      'address': address,
+    };
+  }
+
   factory User.fromMap(Map<String, dynamic> map) {
     return User(
       id: map['id'],
@@ -88,7 +128,7 @@ class User {
       role: role ?? this.role,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? DateTime.now(),
+      updatedAt: updatedAt ?? this.updatedAt,
       phone: phone ?? this.phone,
       address: address ?? this.address,
     );
@@ -100,10 +140,10 @@ class User {
         return 'Owner';
       case UserRole.admin:
         return 'Administrator';
-      case UserRole.cashier:
+      case UserRole.cashier: 
         return 'Cashier';
-      case UserRole.staff:
-        return 'Staff';
+      case UserRole.clerk:
+        return 'Clerk';
     }
   }
 
@@ -115,7 +155,7 @@ class User {
         return Colors.purple;
       case UserRole.cashier:
         return Colors.blue;
-      case UserRole.staff:
+      case UserRole.clerk:
         return Colors.green;
     }
   }
@@ -128,8 +168,11 @@ class User {
         return Icons.admin_panel_settings;
       case UserRole.cashier:
         return Icons.point_of_sale;
-      case UserRole.staff:
+      case UserRole.clerk:
         return Icons.people;
     }
   }
+
+  // FIXED: Add missing displayName getter
+  String get displayName => fullName.isNotEmpty ? fullName : username;
 }

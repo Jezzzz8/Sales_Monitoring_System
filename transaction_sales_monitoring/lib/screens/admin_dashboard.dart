@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
-import '../utils/theme_provider.dart';
+import '../providers/theme_provider.dart';
 import '../models/user_model.dart';
 import 'cashier_dashboard.dart';
 import 'owner_dashboard.dart';
@@ -129,7 +129,7 @@ Future<void> _loadSettings() async {
           case UserRole.cashier:
             Navigator.pushReplacementNamed(context, '/cashier-dashboard');
             break;
-          case UserRole.staff:
+          case UserRole.clerk:
             Navigator.pushReplacementNamed(context, '/staff-dashboard');
             break;
           default:
@@ -682,12 +682,24 @@ class AdminDashboardHome extends StatelessWidget {
                     _buildActionCard(
                       "Inventory", "Monitor stock", 
                       Icons.inventory, Colors.deepOrange, context,
-                      onTap: () => Navigator.pushNamed(context, '/inventory-categories'),
+                      onTap: () {
+                        final state = context.findAncestorStateOfType<_AdminDashboardState>();
+                        state?.setState(() {
+                          state._selectedIndex = 4;
+                          state._selectedScreen = 'Inventory Monitoring';
+                        });
+                      },
                     ),
                     _buildActionCard(
                       "Products", "Manage menu", 
                       Icons.restaurant_menu, Colors.blue, context,
-                      onTap: () => Navigator.pushNamed(context, '/product-categories'),
+                      onTap: () {
+                        final state = context.findAncestorStateOfType<_AdminDashboardState>();
+                        state?.setState(() {
+                          state._selectedIndex = 5;
+                          state._selectedScreen = 'Product Management';
+                        });
+                      },
                     ),
                     _buildActionCard(
                       "Settings", "Configure system", 

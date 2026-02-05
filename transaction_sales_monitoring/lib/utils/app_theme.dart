@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../utils/theme_provider.dart';
+import '../providers/theme_provider.dart';
 import 'theme_manager.dart';
 import '../models/settings_model.dart';
 

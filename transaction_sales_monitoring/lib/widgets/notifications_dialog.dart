@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
 import '../models/notifications_data.dart';
-import '../utils/theme_provider.dart';
+import '../providers/theme_provider.dart';
 import '../utils/responsive.dart';
 
 class NotificationsDialog extends StatefulWidget {

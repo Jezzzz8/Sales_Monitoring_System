@@ -1,7 +1,7 @@
 // ignore_for_file: unused_field, unused_import
 
 import 'package:flutter/material.dart';
-import '../utils/theme_provider.dart';
+import '../providers/theme_provider.dart';
 import '../widgets/sidebar.dart';
 import '../utils/responsive.dart';
 import '../models/notifications_data.dart';

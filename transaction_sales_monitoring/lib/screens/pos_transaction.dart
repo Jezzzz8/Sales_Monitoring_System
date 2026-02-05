@@ -180,6 +180,10 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
     return _amountPaid - _total;
   }
 
+  int get _totalItemCount {
+    return _cartItems.fold(0, (sum, item) => sum + item.quantity);
+  }
+
   void _addToCart(Product product) {
     if (product.stock <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -217,6 +221,8 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       });
     }
 
+    // Clear any existing snackbars before showing new one
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Added ${product.name} to cart'),
@@ -243,6 +249,8 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       }
     });
     
+    // Clear any existing snackbars before showing new one
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Removed ${_cartItems[index].productName} from cart'),
@@ -261,6 +269,8 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       _cartItems.removeAt(index);
     });
     
+    // Clear any existing snackbars before showing new one
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Removed $itemName from cart'),
@@ -273,6 +283,8 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   
   void _clearCart({VoidCallback? onAfterClear}) {
     if (_cartItems.isEmpty) {
+      // Clear any existing snackbars before showing new one
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cart is already empty'),
@@ -309,11 +321,13 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
               // Call the modal update callback if provided
               onAfterClear?.call();
               
+              // Clear any existing snackbars before showing new one
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('Cart cleared successfully'),
                   backgroundColor: Colors.green,
-                  duration: Duration(seconds: 2),
+                  duration: const Duration(seconds: 2),
                 ),
               );
             },
@@ -329,6 +343,8 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
 
   void _processTransaction() {
     if (_cartItems.isEmpty) {
+      // Clear any existing snackbars before showing new one
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please add items to cart'),
@@ -343,6 +359,8 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       setState(() {
         _showCustomerForm = true;
       });
+      // Clear any existing snackbars before showing new one
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter customer name'),
@@ -354,6 +372,8 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
     }
 
     if (_amountPaid < _total) {
+      // Clear any existing snackbars before showing new one
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Amount paid (₱${_amountPaid.toStringAsFixed(2)}) is less than total (₱${_total.toStringAsFixed(2)})'),
@@ -564,6 +584,32 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
              product.categoryId.toLowerCase().contains(_searchController.text.toLowerCase()) ||
              product.description.toLowerCase().contains(_searchController.text.toLowerCase());
     }).toList();
+  }
+
+  int _getGridColumnCount(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth < 600) {
+      return 2; // Mobile
+    } else if (screenWidth < 960) {
+      return 3; // Tablet
+    } else if (screenWidth < 1280) {
+      return 4; // Small desktop
+    } else {
+      return 5; // Large desktop
+    }
+  }
+
+double _getCardAspectRatio(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth < 600) {
+      return 0.65; // Mobile: taller cards
+    } else if (screenWidth < 960) {
+      return 0.7; // Tablet
+    } else if (screenWidth < 1280) {
+      return 0.75; // Small desktop
+    } else {
+      return 0.8; // Large desktop
+    }
   }
 
   Widget _buildProductCard(Product product, bool isMobile) {
@@ -793,7 +839,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
               ),
             ),
             const SizedBox(width: 8),
-            // FIXED: Added proper remove button with clear functionality
             Row(
               children: [
                 IconButton(
@@ -871,14 +916,11 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
     Color textColor,
     Color hintTextColor
   ) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isSmallMobile = screenWidth < 380;
-    
     return Scaffold(
       backgroundColor: backgroundColor,
       body: Column(
         children: [
-          // Header with cart info
+          // Header with cart info (unchanged)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -927,6 +969,13 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    Text( // ADDED: Show total items count
+                      '${_totalItemCount} items',
+                      style: TextStyle(
+                        color: isDarkMode ? Colors.white.withOpacity(0.8) : Colors.white.withOpacity(0.9),
+                        fontSize: 11,
+                      ),
+                    ),
                   ],
                 ),
                 ElevatedButton.icon(
@@ -937,7 +986,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                     size: 18, 
                     color: isDarkMode ? primaryColor : primaryColor
                   ),
-                  label: Text('${_cartItems.length} Items',
+                  label: Text('$_totalItemCount Items', // CHANGED: Use totalItemCount
                     style: TextStyle(
                       color: isDarkMode ? primaryColor : primaryColor,
                     ),
@@ -955,7 +1004,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
             ),
           ),
           
-          // Search bar
+          // Search bar (unchanged)
           Padding(
             padding: const EdgeInsets.all(12),
             child: Container(
@@ -991,27 +1040,20 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
             ),
           ),
           
-          // Products grid with responsive columns - FIXED: Adjusted aspect ratio
+          // Products grid with consistent column distribution - UPDATED
           Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final crossAxisCount = isSmallMobile ? 2 : 2;
-                final childAspectRatio = isSmallMobile ? 0.65 : 0.7; // Reduced for better fit
-                
-                return GridView.builder(
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: childAspectRatio,
-                  ),
-                  itemCount: _filteredProducts.length,
-                  itemBuilder: (context, index) {
-                    final product = _filteredProducts[index];
-                    return _buildProductCard(product, true);
-                  },
-                );
+            child: GridView.builder(
+              padding: const EdgeInsets.all(12),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: _getGridColumnCount(context),
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: _getCardAspectRatio(context),
+              ),
+              itemCount: _filteredProducts.length,
+              itemBuilder: (context, index) {
+                final product = _filteredProducts[index];
+                return _buildProductCard(product, true);
               },
             ),
           ),
@@ -1049,7 +1091,7 @@ Widget _buildDesktopLayout(
               color: backgroundColor,
               child: Column(
                 children: [
-                  // Search bar
+                  // Search bar (unchanged)
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Container(
@@ -1083,28 +1125,20 @@ Widget _buildDesktopLayout(
                     ),
                   ),
                   
-                  // Products grid with responsive columns - FIXED: Adjusted aspect ratio
+                  // Products grid with consistent column distribution - UPDATED
                   Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final availableWidth = constraints.maxWidth;
-                        final crossAxisCount = availableWidth > 1200 ? 4 : (availableWidth > 900 ? 3 : 2);
-                        final childAspectRatio = availableWidth > 1200 ? 0.65 : (availableWidth > 900 ? 0.7 : 0.75); // Reduced for better fit
-                        
-                        return GridView.builder(
-                          padding: const EdgeInsets.all(16),
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: crossAxisCount,
-                            crossAxisSpacing: 16,
-                            mainAxisSpacing: 16,
-                            childAspectRatio: childAspectRatio,
-                          ),
-                          itemCount: _filteredProducts.length,
-                          itemBuilder: (context, index) {
-                            final product = _filteredProducts[index];
-                            return _buildProductCard(product, false);
-                          },
-                        );
+                    child: GridView.builder(
+                      padding: const EdgeInsets.all(16),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: _getGridColumnCount(context),
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: _getCardAspectRatio(context),
+                      ),
+                      itemCount: _filteredProducts.length,
+                      itemBuilder: (context, index) {
+                        final product = _filteredProducts[index];
+                        return _buildProductCard(product, false);
                       },
                     ),
                   ),
@@ -1113,7 +1147,7 @@ Widget _buildDesktopLayout(
             ),
           ),
 
-          // Cart panel
+          // Cart panel (unchanged)
           Expanded(
             flex: isLargeDesktop ? 3 : 2,
             child: _buildCartPanel(primaryColor, isDarkMode, backgroundColor, cardColor, textColor, hintTextColor),
@@ -1184,7 +1218,7 @@ Widget _buildDesktopLayout(
                   ],
                 ),
                 Badge(
-                  label: Text('${_cartItems.length}',
+                  label: Text('${_totalItemCount}', // CHANGED: Use totalItemCount
                     style: TextStyle(
                       color: isDarkMode ? Colors.white : primaryColor,
                     ),
@@ -1610,7 +1644,7 @@ Widget _buildDesktopLayout(
                         ),
                         // FIXED: Add a Key to force rebuild of the badge
                         ValueListenableBuilder<int>(
-                          valueListenable: ValueNotifier<int>(_cartItems.length),
+                          valueListenable: ValueNotifier<int>(_totalItemCount), // CHANGED: Use totalItemCount
                           builder: (context, count, child) {
                             return Badge(
                               label: Text('$count',
@@ -1948,9 +1982,13 @@ Widget _buildDesktopLayout(
     int index, 
     bool isDarkMode, 
     Color primaryColor,
-    Function updateCartState
+    Function updateCartState  // This parameter must be defined
   ) {
+    // Store the item name before any state changes
+    final itemName = item.productName;
+    
     return Card(
+      key: ValueKey('${item.productId}-${item.quantity}'), // Key based on item state
       margin: const EdgeInsets.only(bottom: 8),
       color: isDarkMode ? Colors.grey.shade800 : Colors.white,
       child: ListTile(
@@ -1999,9 +2037,43 @@ Widget _buildDesktopLayout(
                     color: Colors.orange, 
                     size: 20
                   ),
-                  onPressed: () => updateCartState(() {
-                    _removeFromCart(index);
-                  }),
+                  onPressed: () {
+                    // Decrease quantity
+                    if (item.quantity > 1) {
+                      updateCartState(() {  // Using the updateCartState callback
+                        _cartItems[index] = TransactionItem(
+                          productId: item.productId,
+                          productName: item.productName,
+                          quantity: item.quantity - 1,
+                          unitPrice: item.unitPrice,
+                          total: item.unitPrice * (item.quantity - 1),
+                        );
+                      });
+                      
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Decreased ${item.productName} quantity'),
+                          backgroundColor: Colors.orange,
+                          duration: const Duration(seconds: 1),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    } else {
+                      // Remove item if quantity is 1
+                      updateCartState(() {  // Using the updateCartState callback
+                        _cartItems.removeAt(index);
+                      });
+                      
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Removed ${item.productName} from cart'),
+                          backgroundColor: Colors.orange,
+                          duration: const Duration(seconds: 1),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
                   tooltip: 'Decrease quantity',
                 ),
                 IconButton(
@@ -2009,9 +2081,21 @@ Widget _buildDesktopLayout(
                     color: Colors.red, 
                     size: 20
                   ),
-                  onPressed: () => updateCartState(() {
-                    _removeItemFromCart(index);
-                  }),
+                  onPressed: () {
+                    // Remove the entire item
+                    updateCartState(() {
+                      _cartItems.removeAt(index);
+                    });
+                    
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Removed ${item.productName} from cart'),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 1),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
                   tooltip: 'Remove item',
                 ),
               ],

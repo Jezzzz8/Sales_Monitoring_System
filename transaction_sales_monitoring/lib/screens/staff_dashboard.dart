@@ -1,7 +1,7 @@
 // ignore_for_file: unused_field, invalid_use_of_protected_member
 
 import 'package:flutter/material.dart';
-import '../utils/theme_provider.dart';
+import '../providers/theme_provider.dart';
 import '../utils/responsive.dart';
 import '../models/notifications_data.dart';
 import '../widgets/notifications_dialog.dart';

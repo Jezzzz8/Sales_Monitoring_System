@@ -1,8 +1,10 @@
+// lib/screens/user_management.dart
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
 import '../services/auth_service.dart';
-import '../models/user_model.dart';
-import '../utils/theme_provider.dart';
+import '../services/user_service.dart'; // Import UserService
+import '../models/user_model.dart' as app_user; // Using alias
+import '../providers/theme_provider.dart';
 import '../utils/responsive.dart';
 
 class UserManagement extends StatefulWidget {
@@ -13,8 +15,8 @@ class UserManagement extends StatefulWidget {
 }
 
 class _UserManagementState extends State<UserManagement> {
-  List<User> _users = [];
-  final List<User> _selectedUsers = [];
+  List<app_user.User> _users = [];
+  final List<app_user.User> _selectedUsers = [];
   bool _isLoading = true;
   bool _isSelectionMode = false;
   final _formKey = GlobalKey<FormState>();
@@ -24,7 +26,7 @@ class _UserManagementState extends State<UserManagement> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
-  UserRole _selectedRole = UserRole.staff;
+  app_user.UserRole _selectedRole = app_user.UserRole.clerk;
   bool _isActive = true;
   bool _isEditing = false;
   String _editingUserId = '';
@@ -73,7 +75,7 @@ class _UserManagementState extends State<UserManagement> {
   ];
   
   // For bulk role assignment
-  UserRole? _bulkRoleSelection;
+  app_user.UserRole? _bulkRoleSelection;
   String? _bulkCustomRoleSelection;
   String? _bulkGroupSelection;
 
@@ -88,7 +90,7 @@ class _UserManagementState extends State<UserManagement> {
       _isLoading = true;
     });
     try {
-      final users = AuthService.getUsers();
+      final users = await UserService.getUsers(); // Changed to async call
       setState(() {
         _users = users;
         _isLoading = false;
@@ -109,7 +111,7 @@ class _UserManagementState extends State<UserManagement> {
     });
   }
 
-  void _toggleUserSelection(User user) {
+  void _toggleUserSelection(app_user.User user) {
     setState(() {
       if (_selectedUsers.contains(user)) {
         _selectedUsers.remove(user);
@@ -149,7 +151,7 @@ class _UserManagementState extends State<UserManagement> {
     ).then((_) => _resetForm());
   }
 
-  void _showEditUserDialog(User user) {
+  void _showEditUserDialog(app_user.User user) {
     _usernameController.text = user.username;
     _fullNameController.text = user.fullName;
     _emailController.text = user.email;
@@ -412,9 +414,9 @@ class _UserManagementState extends State<UserManagement> {
                                   if (_users.any((u) => u.email == value && u.id != _editingUserId)) {
                                     return 'Email already exists';
                                   }
-                                  return null;
-                                },
-                              ),
+                                return null;
+                              },
+                            ),
                             ),
                             // Half width fields for phone and address
                             SizedBox(
@@ -469,7 +471,7 @@ class _UserManagementState extends State<UserManagement> {
                             Wrap(
                               spacing: 8,
                               runSpacing: 8,
-                              children: UserRole.values.map((role) {
+                              children: app_user.UserRole.values.map((role) {
                                 final isSelected = _selectedRole == role;
                                 final roleColor = _getRoleColor(role);
                                 return ConstrainedBox(
@@ -906,35 +908,35 @@ class _UserManagementState extends State<UserManagement> {
     );
   }
 
-  Color _getRoleColor(UserRole role) {
+  Color _getRoleColor(app_user.UserRole role) {
     switch (role) {
-      case UserRole.owner:
+      case app_user.UserRole.owner:
         return Colors.deepPurple;
-      case UserRole.admin:
+      case app_user.UserRole.admin:
         return Colors.blue;
-      case UserRole.cashier:
+      case app_user.UserRole.cashier:
         return Colors.green;
-      case UserRole.staff:
+      case app_user.UserRole.clerk:
         return Colors.orange;
     }
   }
 
-  String _getRoleDisplayName(UserRole role) {
+  String _getRoleDisplayName(app_user.UserRole role) {
     switch (role) {
-      case UserRole.owner:
+      case app_user.UserRole.owner:
         return 'Owner';
-      case UserRole.admin:
+      case app_user.UserRole.admin:
         return 'Administrator';
-      case UserRole.cashier:
+      case app_user.UserRole.cashier:
         return 'Cashier';
-      case UserRole.staff:
-        return 'Staff';
+      case app_user.UserRole.clerk:
+        return 'Clerk';
     }
   }
 
   Future<void> _saveUser() async {
     if (_formKey.currentState!.validate()) {
-      final user = User(
+      final user = app_user.User(
         id: _editingUserId,
         username: _usernameController.text,
         password: _isEditing ? '' : _passwordController.text,
@@ -949,9 +951,16 @@ class _UserManagementState extends State<UserManagement> {
 
       try {
         if (_isEditing) {
-          AuthService.updateUser(user);
+          // Use UserService instead of AuthService
+          final error = await UserService.updateUser(user);
+          if (error != null) {
+            throw Exception(error);
+          }
         } else {
-          AuthService.addUser(user);
+          final userId = await UserService.createUser(user);
+          if (userId == null) {
+            throw Exception('Failed to create user');
+          }
         }
         
         Navigator.pop(context);
@@ -1007,7 +1016,7 @@ class _UserManagementState extends State<UserManagement> {
     _emailController.clear();
     _phoneController.clear();
     _addressController.clear();
-    _selectedRole = UserRole.staff;
+    _selectedRole = app_user.UserRole.clerk;
     _isActive = true;
     _isEditing = false;
     _editingUserId = '';
@@ -1071,31 +1080,44 @@ class _UserManagementState extends State<UserManagement> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (newPasswordController.text.isNotEmpty) {
-                // Update user with new password
-                final updatedUser = User(
-                  id: _editingUserId,
-                  username: _usernameController.text,
-                  password: newPasswordController.text,
-                  fullName: _fullNameController.text,
-                  email: _emailController.text,
-                  role: _selectedRole,
-                  isActive: _isActive,
-                  createdAt: DateTime.now(),
-                  phone: _phoneController.text.isEmpty ? null : _phoneController.text,
-                  address: _addressController.text.isEmpty ? null : _addressController.text,
-                );
-                
-                AuthService.updateUser(updatedUser);
-                Navigator.pop(context);
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Password reset successfully!'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
+                try {
+                  // Update user with new password
+                  final updatedUser = app_user.User(
+                    id: _editingUserId,
+                    username: _usernameController.text,
+                    password: newPasswordController.text,
+                    fullName: _fullNameController.text,
+                    email: _emailController.text,
+                    role: _selectedRole,
+                    isActive: _isActive,
+                    createdAt: DateTime.now(),
+                    phone: _phoneController.text.isEmpty ? null : _phoneController.text,
+                    address: _addressController.text.isEmpty ? null : _addressController.text,
+                  );
+                  
+                  final error = await UserService.updateUser(updatedUser);
+                  if (error != null) {
+                    throw Exception(error);
+                  }
+                  
+                  Navigator.pop(context);
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Password reset successfully!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error: ${e.toString()}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(
@@ -1318,8 +1340,8 @@ class _UserManagementState extends State<UserManagement> {
                     initiallyExpanded: true,
                     children: [
                       Column(
-                        children: UserRole.values.map((role) {
-                          return RadioListTile<UserRole>(
+                        children: app_user.UserRole.values.map((role) {
+                          return RadioListTile<app_user.UserRole>(
                             title: Text(
                               _getRoleDisplayName(role),
                               style: TextStyle(color: _getRoleColor(role)),
@@ -1338,14 +1360,14 @@ class _UserManagementState extends State<UserManagement> {
                         Padding(
                           padding: const EdgeInsets.all(16),
                           child: ElevatedButton(
-                            onPressed: () {
+                            onPressed: () async {
                               // Update selected users with new role
                               for (final user in _selectedUsers) {
                                 final updatedUser = user.copyWith(role: _bulkRoleSelection!);
-                                AuthService.updateUser(updatedUser);
+                                await UserService.updateUser(updatedUser);
                               }
                               Navigator.pop(context);
-                              _loadUsers();
+                              await _loadUsers();
                               _toggleSelectionMode(false);
                             },
                             style: ElevatedButton.styleFrom(
@@ -1370,12 +1392,12 @@ class _UserManagementState extends State<UserManagement> {
                           children: [
                             Expanded(
                               child: ElevatedButton.icon(
-                                onPressed: () {
+                                onPressed: () async {
                                   for (final user in _selectedUsers) {
-                                    AuthService.toggleUserStatus(user.id);
+                                    await UserService.toggleUserStatus(user.id, false);
                                   }
                                   Navigator.pop(context);
-                                  _loadUsers();
+                                  await _loadUsers();
                                   _toggleSelectionMode(false);
                                 },
                                 icon: Icon(Icons.person_off, color: Colors.white, size: 20),
@@ -1389,13 +1411,12 @@ class _UserManagementState extends State<UserManagement> {
                             const SizedBox(width: 12, height: 12),
                             Expanded(
                               child: ElevatedButton.icon(
-                                onPressed: () {
+                                onPressed: () async {
                                   for (final user in _selectedUsers) {
-                                    final updatedUser = user.copyWith(isActive: true);
-                                    AuthService.updateUser(updatedUser);
+                                    await UserService.toggleUserStatus(user.id, true);
                                   }
                                   Navigator.pop(context);
-                                  _loadUsers();
+                                  await _loadUsers();
                                   _toggleSelectionMode(false);
                                 },
                                 icon: Icon(Icons.person_add, color: Colors.white, size: 20),
@@ -1455,10 +1476,10 @@ class _UserManagementState extends State<UserManagement> {
                                 
                                 if (confirmed == true) {
                                   for (final user in _selectedUsers) {
-                                    AuthService.deleteUser(user.id);
+                                    await UserService.deleteUser(user.id);
                                   }
                                   Navigator.pop(context);
-                                  _loadUsers();
+                                  await _loadUsers();
                                   _toggleSelectionMode(false);
                                 }
                               },
@@ -1494,8 +1515,12 @@ class _UserManagementState extends State<UserManagement> {
 
   Future<void> _toggleUserStatus(String userId) async {
     try {
-      AuthService.toggleUserStatus(userId);
-      await _loadUsers();
+      // Get current user status first
+      final user = await UserService.getUserById(userId);
+      if (user != null) {
+        await UserService.toggleUserStatus(userId, !user.isActive);
+        await _loadUsers();
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1548,7 +1573,7 @@ class _UserManagementState extends State<UserManagement> {
 
     if (confirmed == true) {
       try {
-        AuthService.deleteUser(userId);
+        await UserService.deleteUser(userId);
         await _loadUsers();
         
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1584,7 +1609,7 @@ class _UserManagementState extends State<UserManagement> {
     }
   }
 
-  List<User> get _filteredUsers {
+  List<app_user.User> get _filteredUsers {
     if (_searchQuery.isEmpty) return _users;
     return _users.where((user) {
       return user.fullName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
@@ -1791,7 +1816,7 @@ class _UserManagementState extends State<UserManagement> {
     );
   }
 
-  Widget _buildUserCard(User user, bool isSelected, AppTheme theme) {
+  Widget _buildUserCard(app_user.User user, bool isSelected, AppTheme theme) {
     final isMobile = Responsive.isMobile(context);
     
     return Container(
@@ -1948,7 +1973,7 @@ class _UserManagementState extends State<UserManagement> {
                         onPressed: () => _toggleUserStatus(user.id),
                         tooltip: user.isActive ? 'Deactivate' : 'Activate',
                       ),
-                      if (user.role != UserRole.owner)
+                      if (user.role != app_user.UserRole.owner)
                         IconButton(
                           icon: Icon(
                             Icons.delete,

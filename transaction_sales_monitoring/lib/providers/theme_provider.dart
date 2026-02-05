@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/settings_service.dart';
 import '../models/settings_model.dart';
-import 'theme_manager.dart';
-import 'app_theme.dart';
+import '../utils/theme_manager.dart';
+import '../utils/app_theme.dart';
 
 class ThemeProvider extends ChangeNotifier {
   late AppSettings _settings;

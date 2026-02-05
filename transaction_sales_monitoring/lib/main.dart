@@ -1,8 +1,9 @@
+// lib/main.dart - SEPARATE FILE
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import '../utils/theme_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/admin_login.dart';
 import 'screens/category_management.dart';
 import 'screens/sales_monitoring.dart';
@@ -17,11 +18,21 @@ import 'screens/settings.dart';
 import 'services/settings_service.dart';
 import 'models/settings_model.dart';
 import 'utils/theme_manager.dart';
+import 'firebase/firebase_config.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized(); 
+  
+  try {
+    await FirebaseConfig.initialize();
+    print('Firebase initialized successfully before runApp');
+  } catch (e) {
+    print('Critical: Firebase failed to initialize: $e');
+  }
+
   runApp(
-    ChangeNotifierProvider(
-      create: (context) => ThemeProvider({
+    ChangeNotifierProvider<ThemeProvider>(
+      create: (_) => ThemeProvider({
         'colorName': 'Deep Orange',
         'themeMode': 'Light',
       }),
@@ -42,71 +53,63 @@ class _GenesLechonSystemAppState extends State<GenesLechonSystemApp> {
   bool _hasInternet = true;
   bool _checkingInternet = true;
   bool _showNoInternetDialog = false;
+  bool _firebaseInitialized = false;
+  bool _settingsLoaded = false;
   
   @override
   void initState() {
     super.initState();
-    _checkInternetConnection();
-    _loadSettings();
     
-    // Listen for settings changes
-    SettingsService.notifier.addListener(_onSettingsChanged);
+    _firebaseInitialized = FirebaseConfig.isInitialized;
     
-    // Listen for connectivity changes
-    Connectivity().onConnectivityChanged.listen((result) {
-      _checkInternetConnection();
-    });
+    _initializeApp();
   }
   
-  @override
-  void dispose() {
-    SettingsService.notifier.removeListener(_onSettingsChanged);
-    super.dispose();
-  }
-  
-  Future<void> _checkInternetConnection() async {
-    setState(() {
-      _checkingInternet = true;
-    });
+  Future<void> _initializeApp() async {
+    await _loadSettings();
+    _checkInternetConnection(); 
     
-    try {
-      final connectivityResult = await Connectivity().checkConnectivity();
-      final hasConnection = connectivityResult != ConnectivityResult.none;
-      
+    if (mounted) {
       setState(() {
-        _hasInternet = hasConnection;
-        _checkingInternet = false;
-      });
-      
-      // Show/hide dialog based on connection
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!hasConnection && !_showNoInternetDialog && mounted) {
-          _showNoInternetDialog = true;
-          _showInternetDialog();
-        } else if (hasConnection && _showNoInternetDialog && mounted) {
-          _showNoInternetDialog = false;
-          // Dialog will auto-dismiss when connection is restored
-        }
-      });
-    } catch (e) {
-      setState(() {
-        _hasInternet = false;
         _checkingInternet = false;
       });
     }
   }
   
+  Future<void> _checkInternetConnection() async {
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult == ConnectivityResult.none) {
+        if (mounted) {
+          setState(() => _hasInternet = false);
+        }
+        
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_showNoInternetDialog) {
+            _showInternetDialog();
+          }
+        });
+      }
+    } catch (e) {
+      print('Error checking internet: $e');
+    }
+  }
+  
   void _showInternetDialog() {
+    if (!mounted) return;
+    
+    _showNoInternetDialog = true;
+    
     showDialog(
       context: context,
-      barrierDismissible: false, // User must take action
+      barrierDismissible: false,
       builder: (context) {
         return AlertDialog(
-          title: Row(
+          title: const Row(
             children: [
               Icon(Icons.wifi_off, color: Colors.red),
-              const SizedBox(width: 10),
-              const Text('No Internet Connection'),
+              SizedBox(width: 10),
+              Text('No Internet Connection'),
             ],
           ),
           content: const Column(
@@ -141,13 +144,12 @@ class _GenesLechonSystemAppState extends State<GenesLechonSystemApp> {
                 Navigator.pop(context);
                 _showNoInternetDialog = false;
               },
-              child: const Text('Exit App'),
+              child: const Text('Continue Offline'),
             ),
           ],
         );
       },
     ).then((_) {
-      // When dialog is dismissed
       _showNoInternetDialog = false;
     });
   }
@@ -161,54 +163,102 @@ class _GenesLechonSystemAppState extends State<GenesLechonSystemApp> {
   }
   
   Future<void> _loadSettings() async {
-    final settings = await SettingsService.loadSettings(forceReload: true);
-    setState(() {
-      _currentSettings = settings;
-    });
+    try {
+      final settings = await SettingsService.loadSettings(forceReload: true);
+      if (mounted) {
+        setState(() {
+          _currentSettings = settings;
+          _settingsLoaded = true;
+        });
+      }
+      
+      SettingsService.notifier.addListener(_onSettingsChanged);
+    } catch (e) {
+      print('Error loading settings: $e');
+      if (mounted) {
+        setState(() {
+          _settingsLoaded = true;
+        });
+      }
+    }
   }
   
   @override
-  Widget build(BuildContext context) {
-    // Check internet connection
-    if (_checkingInternet) {
-      return Material(
-        child: Center(
+  void dispose() {
+    SettingsService.notifier.removeListener(_onSettingsChanged);
+    super.dispose();
+  }
+  
+  Widget _buildLoadingScreen() {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.deepOrange.shade50,
+        body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const CircularProgressIndicator(),
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.deepOrange, width: 2),
+                ),
+                child: const Icon(
+                  Icons.restaurant,
+                  size: 60,
+                  color: Colors.deepOrange,
+                ),
+              ),
+              const SizedBox(height: 30),
+              const CircularProgressIndicator(
+                color: Colors.deepOrange,
+                strokeWidth: 3,
+              ),
               const SizedBox(height: 20),
               Text(
-                'Checking connection...',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
+                _getLoadingMessage(),
+                style: const TextStyle(
+                  color: Colors.deepOrange,
                   fontSize: 16,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
           ),
         ),
-      );
+      ),
+    );
+  }
+  
+  String _getLoadingMessage() {
+    if (!_firebaseInitialized) {
+      return 'Initializing Firebase...';
+    } else if (!_settingsLoaded) {
+      return 'Loading settings...';
+    } else if (_checkingInternet) {
+      return 'Checking connection...';
     }
-    
-    // Get the theme provider from context
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    
-    // Only build the app when theme provider is ready
-    if (themeProvider.isLoading || _currentSettings == null) {
-      return const Material(
-        child: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+    return 'Loading app...';
+  }
+  
+  bool get _isAppReady {
+    return _firebaseInitialized && _settingsLoaded;
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    if (!_isAppReady) {
+      return _buildLoadingScreen();
     }
-    
-    final settings = _currentSettings!;
+
+    final settings = _currentSettings ?? AppSettings.defaultSettings();
     
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: "Gene's Lechon Transaction & Sales Monitoring System",
-      // Use ThemeManager to get proper themes
       theme: ThemeManager.lightTheme(settings.primaryColor),
       darkTheme: ThemeManager.darkTheme(settings.primaryColor),
       themeMode: settings.themeModeValue,
@@ -219,21 +269,13 @@ class _GenesLechonSystemAppState extends State<GenesLechonSystemApp> {
         '/owner-dashboard': (context) => const OwnerDashboard(),
         '/cashier-dashboard': (context) => const CashierDashboard(),
         '/staff-dashboard': (context) => const StaffDashboard(),
-        '/inventory-categories': (context) => CategoryManagement(categoryType: 'inventory'),
-        '/product-categories': (context) => CategoryManagement(categoryType: 'product'),
+        '/inventory-categories': (context) => const CategoryManagement(categoryType: 'inventory'),
+        '/product-categories': (context) => const CategoryManagement(categoryType: 'product'),
         '/sales': (context) => const SalesMonitoring(),
         '/inventory': (context) => const InventoryMonitoring(),
         '/products': (context) => const ProductManagement(),
         '/users': (context) => const UserManagement(),
         '/settings': (context) => const SettingsScreen(),
-      },
-      builder: (context, child) {
-        return AnimatedTheme(
-          data: Theme.of(context),
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-          child: child!,
-        );
       },
     );
   }

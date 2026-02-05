@@ -1,86 +1,48 @@
+// lib/services/auth_service.dart - UPDATED VERSION
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import '../models/user_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../firebase/firebase_config.dart';
+import '../models/user_model.dart' as app_user;
+import 'user_service.dart';
+import 'firebase_auth_service.dart';
 
 class AuthService {
-  // Static user cache - no SharedPreferences needed for demo
-  static User? _currentUser;
-  static Map<String, String> _savedCredentials = {};
-  static bool _rememberMe = false;
+  static app_user.User? _currentUser;
+  static SharedPreferences? _prefs;
 
-  // Demo users for testing
-  static final List<User> _demoUsers = [
-    User(
-      id: '1',
-      username: 'owner',
-      password: _hashPassword('owner123'),
-      fullName: 'Gene Lechon Owner',
-      email: 'owner@geneslechon.com',
-      role: UserRole.owner,
-      isActive: true,
-      createdAt: DateTime.now().subtract(const Duration(days: 365)),
-    ),
-    User(
-      id: '2',
-      username: 'admin',
-      password: _hashPassword('admin123'),
-      fullName: 'System Administrator',
-      email: 'admin@geneslechon.com',
-      role: UserRole.admin,
-      isActive: true,
-      createdAt: DateTime.now().subtract(const Duration(days: 180)),
-    ),
-    User(
-      id: '3',
-      username: 'cashier1',
-      password: _hashPassword('cashier123'),
-      fullName: 'Maria Santos',
-      email: 'maria@geneslechon.com',
-      role: UserRole.cashier,
-      isActive: true,
-      createdAt: DateTime.now().subtract(const Duration(days: 90)),
-    ),
-    User(
-      id: '4',
-      username: 'staff1',
-      password: _hashPassword('staff123'),
-      fullName: 'Juan Dela Cruz',
-      email: 'juan@geneslechon.com',
-      role: UserRole.staff,
-      isActive: true,
-      createdAt: DateTime.now().subtract(const Duration(days: 60)),
-    ),
-  ];
+  // Initialize shared preferences
+  static Future<void> _initPrefs() async {
+    _prefs ??= await SharedPreferences.getInstance();
+  }
 
-  static String _hashPassword(String password) {
+  static String hashPassword(String password) {
     return sha256.convert(utf8.encode(password)).toString();
   }
 
-  // INSTANT login - no async delays
-  static Map<String, dynamic> login(String username, String password) {
-    final hashedPassword = _hashPassword(password);
-    
+  // Main login method using Firebase Authentication
+  static Future<Map<String, dynamic>> login(String email, String password) async {
     try {
-      final user = _demoUsers.firstWhere(
-        (u) => u.username == username && u.password == hashedPassword && u.isActive,
-        orElse: () => User(id: '', username: '', password: '', fullName: '', email: '', role: UserRole.staff, isActive: false, createdAt: DateTime.now()),
-      );
-
-      if (user.id.isNotEmpty) {
-        // Set current user
+      // Use Firebase Authentication
+      final result = await FirebaseAuthService.signInWithEmailAndPassword(email, password);
+      
+      if (result['success'] == true) {
+        final user = result['user'] as app_user.User;
         _currentUser = user;
+        
+        // Save login state
+        await _saveLoginState(user);
         
         return {
           'success': true,
           'user': user,
         };
+      } else {
+        // If Firebase Auth fails, fallback to Firestore check (for migration)
+        return await _fallbackLogin(email, password);
       }
-      
-      return {
-        'success': false,
-        'message': 'Invalid username or password',
-      };
     } catch (e) {
+      print('Login error: $e');
       return {
         'success': false,
         'message': 'Login error. Please try again.',
@@ -88,98 +50,168 @@ class AuthService {
     }
   }
 
-  // Remove all SharedPreferences calls - use in-memory cache
-  static void saveCredentials(String username, String password, bool rememberMe) {
-    _rememberMe = rememberMe;
-    if (rememberMe) {
-      _savedCredentials = {
-        'username': username,
-        'password': password,
+  // Fallback login using Firestore (for migration purposes)
+  static Future<Map<String, dynamic>> _fallbackLogin(String email, String password) async {
+    try {
+      // Get user from Firestore
+      final user = await UserService.getUserByEmail(email);
+      
+      if (user == null) {
+        return {
+          'success': false,
+          'message': 'User not found',
+        };
+      }
+      
+      // Check if user is active
+      if (!user.isActive) {
+        return {
+          'success': false,
+          'message': 'Account is deactivated',
+        };
+      }
+      
+      // Verify password
+      final hashedPassword = hashPassword(password);
+      if (user.password != hashedPassword) {
+        return {
+          'success': false,
+          'message': 'Invalid password',
+        };
+      }
+      
+      // Set current user
+      _currentUser = user;
+      
+      // Save login state
+      await _saveLoginState(user);
+      
+      // Try to create Firebase Auth account for migration
+      try {
+        await FirebaseAuthService.createFirebaseUser(
+          email,
+          password,
+          user.toMap(),
+        );
+      } catch (e) {
+        print('Migration warning: $e');
+      }
+      
+      return {
+        'success': true,
+        'user': user,
       };
-    } else {
-      _savedCredentials = {};
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Login failed. Please try again.',
+      };
     }
   }
 
-  // Instant credentials retrieval
-  static Map<String, dynamic> getSavedCredentials() {
+  // Save login state to shared preferences
+  static Future<void> _saveLoginState(app_user.User user) async {
+    await _initPrefs();
+    await _prefs!.setString('current_user_id', user.id);
+    await _prefs!.setString('current_user_email', user.email);
+    await _prefs!.setString('current_user_name', user.fullName);
+    await _prefs!.setString('current_user_role', user.role.name);
+  }
+
+  // Load saved credentials
+  static Future<Map<String, dynamic>> getSavedCredentials() async {
+    await _initPrefs();
     return {
-      'username': _savedCredentials['username'] ?? '',
-      'password': _savedCredentials['password'] ?? '',
-      'rememberMe': _rememberMe,
+      'email': _prefs?.getString('saved_email') ?? '',
+      'password': _prefs?.getString('saved_password') ?? '',
+      'rememberMe': _prefs?.getBool('remember_me') ?? false,
     };
   }
 
-  // Instant authentication check
-  static bool isAuthenticated() {
+  // Save credentials if remember me is checked
+  static Future<void> saveCredentials(String email, String password, bool rememberMe) async {
+    await _initPrefs();
+    
+    if (rememberMe) {
+      await _prefs!.setString('saved_email', email);
+      await _prefs!.setString('saved_password', password);
+      await _prefs!.setBool('remember_me', true);
+    } else {
+      await _prefs!.remove('saved_email');
+      await _prefs!.remove('saved_password');
+      await _prefs!.setBool('remember_me', false);
+    }
+  }
+
+  // Check authentication status
+  static Future<bool> isAuthenticated() async {
+    await _initPrefs();
+    
+    // Check Firebase Auth first
+    if (FirebaseAuthService.isAuthenticated()) {
+      return true;
+    }
+    
+    // Fallback to shared preferences
+    final userId = _prefs?.getString('current_user_id');
+    
+    if (userId != null && _currentUser == null) {
+      // Try to load user from Firestore
+      _currentUser = await UserService.getUserById(userId);
+    }
+    
     return _currentUser != null;
   }
 
-  // Instant current user retrieval - CHANGED to async
-  static Future<User?> getCurrentUser() async {
+  // Get current user
+  static Future<app_user.User?> getCurrentUser() async {
+    if (_currentUser == null) {
+      await isAuthenticated(); // This will try to load the user
+    }
     return _currentUser;
   }
 
-  static void logout() {
+  // Logout
+  static Future<void> logout() async {
+    await _initPrefs();
+    
+    // Sign out from Firebase Auth
+    await FirebaseAuthService.signOut();
+    
+    // Clear shared preferences
+    await _prefs!.remove('current_user_id');
+    await _prefs!.remove('current_user_email');
+    await _prefs!.remove('current_user_name');
+    await _prefs!.remove('current_user_role');
+    
+    // Clear current user
     _currentUser = null;
   }
 
-  // User management functions (for admin only)
-  static List<User> getUsers() {
-    return List.from(_demoUsers);
+  // Password reset with Firebase
+  static Future<Map<String, dynamic>> resetPassword(String email) async {
+    return await FirebaseAuthService.sendPasswordResetEmail(email);
   }
 
-  static void addUser(User user) {
-    final newUser = user.copyWith(
-      id: (_demoUsers.length + 1).toString(),
-      password: _hashPassword(user.password),
-      createdAt: DateTime.now(),
-    );
-    _demoUsers.add(newUser);
+  // Check if user is logged in via Firebase
+  static bool isFirebaseAuthenticated() {
+    return FirebaseAuthService.isAuthenticated();
   }
 
-  static void updateUser(User user) {
-    final index = _demoUsers.indexWhere((u) => u.id == user.id);
-    if (index != -1) {
-      final originalPassword = _demoUsers[index].password;
-      final updatedUser = user.copyWith(
-        password: user.password.isEmpty ? originalPassword : _hashPassword(user.password),
-        updatedAt: DateTime.now(),
-      );
-      _demoUsers[index] = updatedUser;
-    }
-  }
-
-  static void deleteUser(String userId) {
-    _demoUsers.removeWhere((u) => u.id == userId);
-  }
-
-  static void toggleUserStatus(String userId) {
-    final index = _demoUsers.indexWhere((u) => u.id == userId);
-    if (index != -1) {
-      final user = _demoUsers[index];
-      _demoUsers[index] = user.copyWith(
-        isActive: !user.isActive,
-        updatedAt: DateTime.now(),
-      );
-    }
-  }
-
-  // Role-based access control
-  static bool hasPermission(UserRole role, String screen) {
+  // Role-based access control (keep your existing methods)
+  static bool hasPermission(app_user.UserRole role, String screen) {
     switch (role) {
-      case UserRole.owner:
+      case app_user.UserRole.owner:
         return _ownerPermissions.contains(screen);
-      case UserRole.admin:
+      case app_user.UserRole.admin:
         return _adminPermissions.contains(screen);
-      case UserRole.cashier:
+      case app_user.UserRole.cashier:
         return _cashierPermissions.contains(screen);
-      case UserRole.staff:
+      case app_user.UserRole.clerk:
         return _staffPermissions.contains(screen);
-      }
+    }
   }
 
-  // Permission lists
   static final List<String> _ownerPermissions = [
     'dashboard',
     'pos',
@@ -200,7 +232,7 @@ class AuthService {
     'products',
     'settings',
     'notifications',
-    'users', // Only admin has user management
+    'users',
   ];
 
   static final List<String> _cashierPermissions = [
@@ -216,8 +248,7 @@ class AuthService {
     'notifications',
   ];
 
-  // Check if user can access a route
-  static bool canAccessRoute(UserRole role, String route) {
+  static bool canAccessRoute(app_user.UserRole role, String route) {
     final routeMap = {
       '/dashboard': 'dashboard',
       '/owner-dashboard': 'dashboard',

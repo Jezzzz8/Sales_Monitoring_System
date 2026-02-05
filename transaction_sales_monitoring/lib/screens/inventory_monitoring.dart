@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../utils/responsive.dart';
 import '../models/production_inventory.dart';
 import '../screens/category_management.dart';
+import '../utils/settings_mixin.dart';
 
 class InventoryMonitoring extends StatefulWidget {
   const InventoryMonitoring({super.key});
@@ -10,7 +11,8 @@ class InventoryMonitoring extends StatefulWidget {
   State<InventoryMonitoring> createState() => _InventoryMonitoringState();
 }
 
-class _InventoryMonitoringState extends State<InventoryMonitoring> {
+class _InventoryMonitoringState extends State<InventoryMonitoring>  with SettingsMixin {
+  
   final List<ProductionInventory> _inventoryItems = [
     ProductionInventory(
       id: '1',
@@ -127,6 +129,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
   }
 
   void _restockItem(ProductionInventory item) {
+    final primaryColor = getPrimaryColor();
     final quantityController = TextEditingController(text: item.reorderQuantity.toString());
     final unitCostController = TextEditingController(text: item.unitCost.toString());
 
@@ -164,7 +167,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.deepOrange.withOpacity(0.1),
+                  color: primaryColor,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -173,7 +176,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                     const Text('New Total Stock:', style: TextStyle(fontWeight: FontWeight.bold)),
                     Text(
                       '${item.currentStock + (double.tryParse(quantityController.text) ?? 0)} ${item.unit}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange),
+                      style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor),
                     ),
                   ],
                 ),
@@ -220,7 +223,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
+              backgroundColor: primaryColor,
             ),
             child: const Text('RESTOCK', style: TextStyle(color: Colors.white)),
           ),
@@ -230,6 +233,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
   }
 
   void _showItemDetails(ProductionInventory item) {
+    final primaryColor = getPrimaryColor();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -261,7 +265,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
           ElevatedButton(
             onPressed: () => _restockItem(item),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepOrange,
+              backgroundColor: primaryColor,
             ),
             child: const Text('RESTOCK', style: TextStyle(color: Colors.white)),
           ),
@@ -298,6 +302,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
   }
 
   void _addItem() {
+    final primaryColor = getPrimaryColor();
     final nameController = TextEditingController();
     final categoryController = TextEditingController();
     final unitController = TextEditingController();
@@ -328,11 +333,11 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
           return AlertDialog(
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.add_circle, color: Colors.deepOrange),
-                SizedBox(width: 8),
-                Text('Add Production Item'),
+                Icon(Icons.add_circle, color: primaryColor),
+                const SizedBox(width: 8),
+                const Text('Add Production Item'),
               ],
             ),
             content: SingleChildScrollView(
@@ -542,26 +547,26 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.deepOrange.withOpacity(0.1),
+                      color: primaryColor,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.deepOrange.withOpacity(0.3)),
+                      border: Border.all(color: primaryColor),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        Text(
                           'Total Value:',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: Colors.deepOrange,
+                            color: primaryColor,
                           ),
                         ),
                         Text(
                           '₱${((double.tryParse(currentStockController.text) ?? 0) * (double.tryParse(unitCostController.text) ?? 0)).toStringAsFixed(2)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
-                            color: Colors.deepOrange,
+                            color: primaryColor,
                           ),
                         ),
                       ],
@@ -656,7 +661,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepOrange,
+                  backgroundColor: primaryColor,
                 ),
                 child: const Text('ADD PRODUCTION ITEM', style: TextStyle(color: Colors.white)),
               ),
@@ -677,6 +682,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
   }
 
   void _editItem(ProductionInventory item) {
+    final primaryColor = getPrimaryColor();
     final nameController = TextEditingController(text: item.name);
     final categoryController = TextEditingController(text: item.category);
     final unitController = TextEditingController(text: item.unit);
@@ -687,7 +693,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
     
     String selectedStatus = item.status;
     List<String> statuses = ['In Stock', 'Low Stock', 'Out of Stock'];
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -843,26 +849,26 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.deepOrange.withOpacity(0.1),
+                      color: primaryColor,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.deepOrange.withOpacity(0.3)),
+                      border: Border.all(color: primaryColor),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        Text(
                           'Total Value:',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: Colors.deepOrange,
+                            color: primaryColor,
                           ),
                         ),
                         Text(
                           '₱${(double.tryParse(currentStockController.text) ?? 0) * (double.tryParse(unitCostController.text) ?? 0)}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
-                            color: Colors.deepOrange,
+                            color: primaryColor,
                           ),
                         ),
                       ],
@@ -1007,11 +1013,27 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final isMobile = Responsive.isMobile(context);
-    final padding = Responsive.getScreenPadding(context);
+Widget build(BuildContext context) {
+  // Check if settings are still loading
+  if (isLoadingSettings) {
+    return const Center(child: CircularProgressIndicator());
+  }
+  
+  final isMobile = Responsive.isMobile(context);
+  final isTablet = Responsive.isTablet(context);
+  final isDesktop = Responsive.isDesktop(context);
+  final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+  
+  // Theme colors based on dark mode - MATCHING sales_monitoring.dart
+  final primaryColor = getPrimaryColor(); // Get from settings AFTER loading
+  final backgroundColor = isDarkMode ? Colors.grey.shade900 : Colors.grey.shade50;
+  final cardColor = isDarkMode ? Colors.grey.shade800 : Colors.white;
+  final textColor = isDarkMode ? Colors.white : Colors.black87;
+  final mutedTextColor = isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600;
+  final padding = Responsive.getScreenPadding(context);
 
-    return Scaffold(
+  return Scaffold(
+    backgroundColor: backgroundColor,
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
@@ -1023,128 +1045,103 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    constraints: BoxConstraints(
-                      minHeight: 150,
-                    ),
-                    child: Card(
-                      elevation: 3,
-                      child: Padding(
-                        padding: Responsive.getCardPadding(context),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'INVENTORY MONITORING',
-                              style: TextStyle(
-                                fontSize: Responsive.getFontSize(context, mobile: 16, tablet: 18, desktop: 20),
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Manage inventory for lechon business',
-                              style: TextStyle(
-                                fontSize: Responsive.getBodyFontSize(context),
-                                color: Colors.grey.shade600,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 16),
-                            GridView.count(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              crossAxisCount: isMobile ? 2 : 4,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: isMobile ? 1.5 : 1.8,
-                              children: [
-                                _buildStatCard(
-                                  'Total Items',
-                                  '$_totalItemCount',
-                                  Icons.inventory,
-                                  Colors.blue,
-                                  context,
-                                ),
-                                _buildStatCard(
-                                  'Total Value',
-                                  '₱${_totalInventoryValue.toStringAsFixed(2)}',
-                                  Icons.attach_money,
-                                  Colors.green,
-                                  context,
-                                ),
-                                _buildStatCard(
-                                  'Need Reorder',
-                                  '${_itemsNeedingReorder.length}',
-                                  Icons.warning,
-                                  Colors.orange,
-                                  context,
-                                ),
-                                _buildStatCard(
-                                  'Item Types',
-                                  '${_itemTypes.length}',
-                                  Icons.category,
-                                  Colors.deepOrange,
-                                  context,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
+                  // ENHANCED: Main Stats Grid - Matching sales_monitoring style
+                  Responsive.buildResponsiveCardGrid(
+                    context: context,
+                    title: 'INVENTORY OVERVIEW',
+                    titleColor: primaryColor,
+                    centerTitle: true,
+                    cards: [
+                      _buildStatCard(
+                        'Total Items',
+                        '$_totalItemCount',
+                        Icons.inventory,
+                        Colors.blue,
+                        context,
+                        isDarkMode: isDarkMode,
+                        subtitle: 'All inventory units',
                       ),
-                    ),
+                      _buildStatCard(
+                        'Total Value',
+                        '₱${_totalInventoryValue.toStringAsFixed(2)}',
+                        Icons.attach_money,
+                        Colors.green,
+                        context,
+                        isDarkMode: isDarkMode,
+                        subtitle: 'Total inventory worth',
+                      ),
+                      _buildStatCard(
+                        'Need Reorder',
+                        '${_itemsNeedingReorder.length}',
+                        Icons.warning,
+                        Colors.orange,
+                        context,
+                        isDarkMode: isDarkMode,
+                        subtitle: 'Items below minimum',
+                      ),
+                      _buildStatCard(
+                        'Item Types',
+                        '${_itemTypes.length}',
+                        Icons.category,
+                        primaryColor,
+                        context,
+                        isDarkMode: isDarkMode,
+                        subtitle: 'Product categories',
+                      ),
+                    ],
                   ),
 
                   const SizedBox(height: 16),
 
+                  // ENHANCED: Filter Options Card - Matching sales_monitoring style
                   Container(
                     constraints: BoxConstraints(
-                      minHeight: isMobile ? 250 : 150,
+                      minHeight: isMobile ? 200 : 150,
                     ),
                     child: Card(
-                      elevation: 3,
+                      elevation: isDarkMode ? 2 : 3,
+                      color: cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                          width: 1,
+                        ),
+                      ),
                       child: Padding(
                         padding: Responsive.getCardPadding(context),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'FILTERS',
-                                  style: TextStyle(
-                                    fontSize: Responsive.getSubtitleFontSize(context),
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepOrange,
-                                  ),
-                                ),
-                                if (isMobile)
-                                  IconButton(
-                                    icon: Icon(
-                                      _showFilters ? Icons.filter_list_off : Icons.filter_list,
-                                      color: Colors.deepOrange,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _showFilters = !_showFilters;
-                                      });
-                                    },
-                                  ),
-                              ],
+                            Text(
+                              'FILTER OPTIONS',
+                              style: TextStyle(
+                                fontSize: Responsive.getSubtitleFontSize(context),
+                                fontWeight: FontWeight.bold,
+                                color: primaryColor,
+                              ),
                             ),
                             const SizedBox(height: 12),
                             TextField(
                               controller: _searchController,
                               decoration: InputDecoration(
                                 hintText: 'Search items by name or category...',
-                                prefixIcon: const Icon(Icons.search),
+                                hintStyle: TextStyle(color: mutedTextColor),
+                                prefixIcon: Icon(Icons.search, color: primaryColor),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(color: primaryColor),
                                 ),
                                 suffixIcon: _searchController.text.isNotEmpty
                                     ? IconButton(
@@ -1157,47 +1154,80 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                       )
                                     : null,
                               ),
+                              style: TextStyle(color: textColor),
                               onChanged: (value) => setState(() {}),
                             ),
                             if ((!isMobile || _showFilters))
                               Column(
                                 children: [
                                   const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: DropdownButtonFormField<String>(
-                                          initialValue: _selectedItemType,
-                                          decoration: const InputDecoration(
-                                            labelText: 'Item Type',
-                                            border: OutlineInputBorder(),
+                                  if (!isMobile)
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: DropdownButtonFormField<String>(
+                                            initialValue: _selectedItemType,
+                                            dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                                            style: TextStyle(color: textColor),
+                                            decoration: InputDecoration(
+                                              labelText: 'Item Type',
+                                              labelStyle: TextStyle(color: mutedTextColor),
+                                              border: OutlineInputBorder(
+                                                borderSide: BorderSide(
+                                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                ),
+                                              ),
+                                              enabledBorder: OutlineInputBorder(
+                                                borderSide: BorderSide(
+                                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                ),
+                                              ),
+                                              focusedBorder: OutlineInputBorder(
+                                                borderSide: BorderSide(color: primaryColor),
+                                              ),
+                                              prefixIcon: Icon(Icons.pets, color: primaryColor),
+                                            ),
+                                            items: ['All', ..._itemTypes]
+                                                .map((type) => DropdownMenuItem(
+                                                      value: type,
+                                                      child: Text(type, style: TextStyle(color: textColor)),
+                                                    ))
+                                                .toList(),
+                                            onChanged: (value) {
+                                              setState(() {
+                                                _selectedItemType = value!;
+                                              });
+                                            },
                                           ),
-                                          items: ['All', ..._itemTypes]
-                                              .map((type) => DropdownMenuItem(
-                                                    value: type,
-                                                    child: Text(type),
-                                                  ))
-                                              .toList(),
-                                          onChanged: (value) {
-                                            setState(() {
-                                              _selectedItemType = value!;
-                                            });
-                                          },
                                         ),
-                                      ),
-                                      if (!isMobile) const SizedBox(width: 16),
-                                      if (!isMobile)
+                                        const SizedBox(width: 16),
                                         Expanded(
                                           child: DropdownButtonFormField<String>(
                                             initialValue: _selectedStatus,
-                                            decoration: const InputDecoration(
+                                            dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                                            style: TextStyle(color: textColor),
+                                            decoration: InputDecoration(
                                               labelText: 'Status',
-                                              border: OutlineInputBorder(),
+                                              labelStyle: TextStyle(color: mutedTextColor),
+                                              border: OutlineInputBorder(
+                                                borderSide: BorderSide(
+                                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                ),
+                                              ),
+                                              enabledBorder: OutlineInputBorder(
+                                                borderSide: BorderSide(
+                                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                ),
+                                              ),
+                                              focusedBorder: OutlineInputBorder(
+                                                borderSide: BorderSide(color: primaryColor),
+                                              ),
+                                              prefixIcon: Icon(Icons.info, color: primaryColor),
                                             ),
                                             items: ['All', 'In Stock', 'Low Stock', 'Out of Stock']
                                                 .map((status) => DropdownMenuItem(
                                                       value: status,
-                                                      child: Text(status),
+                                                      child: Text(status, style: TextStyle(color: textColor)),
                                                     ))
                                                 .toList(),
                                             onChanged: (value) {
@@ -1207,22 +1237,72 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                             },
                                           ),
                                         ),
-                                    ],
-                                  ),
-                                  if (isMobile)
+                                      ],
+                                    )
+                                  else
                                     Column(
                                       children: [
+                                        DropdownButtonFormField<String>(
+                                          initialValue: _selectedItemType,
+                                          dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                                          style: TextStyle(color: textColor),
+                                          decoration: InputDecoration(
+                                            labelText: 'Item Type',
+                                            labelStyle: TextStyle(color: mutedTextColor),
+                                            border: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                              ),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                              ),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(color: primaryColor),
+                                            ),
+                                            prefixIcon: Icon(Icons.pets, color: primaryColor),
+                                          ),
+                                          items: ['All', ..._itemTypes]
+                                              .map((type) => DropdownMenuItem(
+                                                    value: type,
+                                                    child: Text(type, style: TextStyle(color: textColor)),
+                                                  ))
+                                              .toList(),
+                                          onChanged: (value) {
+                                            setState(() {
+                                              _selectedItemType = value!;
+                                            });
+                                          },
+                                        ),
                                         const SizedBox(height: 12),
                                         DropdownButtonFormField<String>(
                                           initialValue: _selectedStatus,
-                                          decoration: const InputDecoration(
+                                          dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                                          style: TextStyle(color: textColor),
+                                          decoration: InputDecoration(
                                             labelText: 'Status',
-                                            border: OutlineInputBorder(),
+                                            labelStyle: TextStyle(color: mutedTextColor),
+                                            border: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                              ),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(
+                                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                              ),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderSide: BorderSide(color: primaryColor),
+                                            ),
+                                            prefixIcon: Icon(Icons.info, color: primaryColor),
                                           ),
                                           items: ['All', 'In Stock', 'Low Stock', 'Out of Stock']
                                               .map((status) => DropdownMenuItem(
                                                     value: status,
-                                                    child: Text(status),
+                                                    child: Text(status, style: TextStyle(color: textColor)),
                                                   ))
                                               .toList(),
                                           onChanged: (value) {
@@ -1235,6 +1315,23 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                     ),
                                 ],
                               ),
+                            if (isMobile)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _showFilters = !_showFilters;
+                                      });
+                                    },
+                                    child: Text(
+                                      _showFilters ? 'Hide Filters' : 'Show Filters',
+                                      style: TextStyle(color: primaryColor),
+                                    ),
+                                  ),
+                                ],
+                              ),
                           ],
                         ),
                       ),
@@ -1243,16 +1340,24 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
 
                   const SizedBox(height: 16),
 
+                  // ENHANCED: Low Stock Alert Card - Matching sales_monitoring style
                   if (_itemsNeedingReorder.isNotEmpty)
                     Column(
                       children: [
                         Container(
                           constraints: BoxConstraints(
-                            minHeight: 100,
+                            minHeight: 120,
                           ),
                           child: Card(
-                            elevation: 3,
-                            color: Colors.orange.shade50,
+                            elevation: isDarkMode ? 2 : 3,
+                            color: Colors.orange.shade50.withOpacity(isDarkMode ? 0.2 : 1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: isDarkMode ? Colors.orange.shade700 : Colors.orange.shade300,
+                                width: 1.5,
+                              ),
+                            ),
                             child: Padding(
                               padding: Responsive.getCardPadding(context),
                               child: Column(
@@ -1261,14 +1366,25 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                 children: [
                                   Row(
                                     children: [
-                                      const Icon(Icons.warning, color: Colors.orange),
+                                      Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.orange.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(Icons.warning, color: Colors.orange, size: 20),
+                                      ),
                                       const SizedBox(width: 8),
-                                      Text(
-                                        'LOW STOCK ALERT',
-                                        style: TextStyle(
-                                          fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.orange,
+                                      Expanded(
+                                        child: Text(
+                                          'LOW STOCK ALERT',
+                                          style: TextStyle(
+                                            fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.orange,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                     ],
@@ -1278,7 +1394,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                     '${_itemsNeedingReorder.length} items need immediate attention:',
                                     style: TextStyle(
                                       fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
-                                      color: Colors.grey.shade700,
+                                      color: isDarkMode ? Colors.grey.shade300 : Colors.grey.shade700,
                                     ),
                                   ),
                                   const SizedBox(height: 8),
@@ -1287,11 +1403,22 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                     runSpacing: 8,
                                     children: _itemsNeedingReorder.map((item) => InkWell(
                                       onTap: () => _showItemDetails(item),
-                                      child: Chip(
-                                        backgroundColor: Colors.orange.shade100,
-                                        label: Text(
-                                          '${item.name} (${item.category}) - ${item.currentStock} ${item.unit}',
-                                          style: const TextStyle(color: Colors.orange),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: isDarkMode ? Colors.orange.shade800 : Colors.orange.shade100,
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(
+                                            color: isDarkMode ? Colors.orange.shade700 : Colors.orange.shade300,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '${item.name} (${item.category})',
+                                          style: TextStyle(
+                                            color: isDarkMode ? Colors.white : Colors.orange.shade800,
+                                            fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
                                       ),
                                     )).toList(),
@@ -1305,12 +1432,21 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                       ],
                     ),
 
+                  // ENHANCED: Inventory Items Card - Matching sales_monitoring style
                   Container(
                     constraints: BoxConstraints(
                       minHeight: 200,
                     ),
                     child: Card(
-                      elevation: 3,
+                      elevation: isDarkMode ? 2 : 3,
+                      color: cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                          width: 1,
+                        ),
+                      ),
                       child: Padding(
                         padding: Responsive.getCardPadding(context),
                         child: Column(
@@ -1320,38 +1456,80 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  'INVENTORY ITEMS',
-                                  style: TextStyle(
-                                    fontSize: Responsive.getTitleFontSize(context),
-                                    fontWeight: FontWeight.bold,
+                                Flexible(
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: primaryColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(Icons.inventory, color: primaryColor, size: 20),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          'INVENTORY ITEMS',
+                                          style: TextStyle(
+                                            fontSize: Responsive.getTitleFontSize(context),
+                                            fontWeight: FontWeight.bold,
+                                            color: primaryColor,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 Responsive.getOrientationFlexLayout(
                                   context,
                                   children: [
+                                    // ENHANCED: Manage Categories Button - Matching sales_monitoring style
                                     ElevatedButton.icon(
                                       onPressed: _openCategoryManagement,
-                                      icon: const Icon(Icons.category, size: 16),
-                                      label: const Text('MANAGE CATEGORIES'),
+                                      icon: Icon(Icons.category, 
+                                          size: Responsive.getIconSize(context, multiplier: 0.8)),
+                                      label: Text(
+                                        'MANAGE CATEGORIES',
+                                        style: TextStyle(
+                                          fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14),
+                                        ),
+                                      ),
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: Colors.orange,
+                                        foregroundColor: Colors.white,
                                         padding: EdgeInsets.symmetric(
                                           horizontal: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
                                           vertical: Responsive.getButtonHeight(context) * 0.5,
                                         ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(width: 8),
+                                    // ENHANCED: Add Item Button - Matching sales_monitoring style
                                     ElevatedButton.icon(
                                       onPressed: _addItem,
-                                      icon: const Icon(Icons.add, size: 16),
-                                      label: const Text('ADD ITEM'),
+                                      icon: Icon(Icons.add, 
+                                          size: Responsive.getIconSize(context, multiplier: 0.8)),
+                                      label: Text(
+                                        'ADD ITEM',
+                                        style: TextStyle(
+                                          fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14),
+                                        ),
+                                      ),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.deepOrange,
+                                        backgroundColor: primaryColor,
+                                        foregroundColor: Colors.white,
                                         padding: EdgeInsets.symmetric(
                                           horizontal: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
                                           vertical: Responsive.getButtonHeight(context) * 0.5,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(8),
                                         ),
                                       ),
                                     ),
@@ -1372,14 +1550,14 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                           Icon(
                                             Icons.inventory,
                                             size: Responsive.getIconSize(context, multiplier: 2.5),
-                                            color: Colors.grey,
+                                            color: mutedTextColor,
                                           ),
                                           SizedBox(height: Responsive.getSpacing(context).height),
                                           Text(
                                             'No items found',
                                             style: TextStyle(
                                               fontSize: Responsive.getBodyFontSize(context),
-                                              color: Colors.grey,
+                                              color: mutedTextColor,
                                             ),
                                           ),
                                         ],
@@ -1393,125 +1571,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                         itemCount: _filteredItems.length,
                                         itemBuilder: (context, index) {
                                           final item = _filteredItems[index];
-                                          return Card(
-                                            margin: EdgeInsets.only(bottom: Responsive.getPaddingSize(context)),
-                                            child: InkWell(
-                                              onTap: () => _showItemDetails(item),
-                                              child: Padding(
-                                                padding: Responsive.getCardPadding(context),
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Row(
-                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                      children: [
-                                                        Expanded(
-                                                          child: Text(
-                                                            '${item.name} (${item.category})',
-                                                            style: TextStyle(
-                                                              fontWeight: FontWeight.bold,
-                                                              fontSize: Responsive.getSubtitleFontSize(context),
-                                                            ),
-                                                            maxLines: 2,
-                                                            overflow: TextOverflow.ellipsis,
-                                                          ),
-                                                        ),
-                                                        Chip(
-                                                          label: Text(item.status),
-                                                          backgroundColor: _getStatusColor(item.status),
-                                                          labelStyle: TextStyle(
-                                                            color: _getStatusTextColor(item.status),
-                                                            fontWeight: FontWeight.bold,
-                                                            fontSize: 10,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    SizedBox(height: Responsive.getSmallSpacing(context).height),
-                                                    Row(
-                                                      children: [
-                                                        Icon(
-                                                          Icons.inventory,
-                                                          size: Responsive.getIconSize(context, multiplier: 0.6),
-                                                          color: Colors.grey,
-                                                        ),
-                                                        SizedBox(width: Responsive.getHorizontalSpacing(context).width),
-                                                        Text(
-                                                          'Stock: ${item.currentStock} ${item.unit}',
-                                                          style: TextStyle(
-                                                            fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                                                            color: Colors.grey,
-                                                          ),
-                                                        ),
-                                                        const Spacer(),
-                                                        Icon(
-                                                          Icons.attach_money,
-                                                          size: Responsive.getIconSize(context, multiplier: 0.6),
-                                                          color: Colors.grey,
-                                                        ),
-                                                        SizedBox(width: Responsive.getHorizontalSpacing(context).width),
-                                                        Text(
-                                                          '₱${item.unitCost.toStringAsFixed(2)}/${item.unit}',
-                                                          style: TextStyle(
-                                                            fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                                                            color: Colors.grey,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    SizedBox(height: Responsive.getSmallSpacing(context).height),
-                                                    Row(
-                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                      children: [
-                                                        Column(
-                                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                                          children: [
-                                                            Text(
-                                                              'Min Stock: ${item.minimumStock} ${item.unit}',
-                                                              style: TextStyle(
-                                                                fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                                                              ),
-                                                            ),
-                                                            Text(
-                                                              'Total: ₱${item.stockValue.toStringAsFixed(2)}',
-                                                              style: TextStyle(
-                                                                fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                                                                fontWeight: FontWeight.bold,
-                                                                color: Colors.deepOrange,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                        Row(
-                                                          children: [
-                                                            IconButton(
-                                                              icon: Icon(Icons.restore, size: Responsive.getIconSize(context, multiplier: 0.8)),
-                                                              color: Colors.blue,
-                                                              onPressed: () => _restockItem(item),
-                                                              tooltip: 'Restock',
-                                                            ),
-                                                            IconButton(
-                                                              icon: Icon(Icons.edit, size: Responsive.getIconSize(context, multiplier: 0.8)),
-                                                              color: Colors.green,
-                                                              onPressed: () => _editItem(item),
-                                                              tooltip: 'Edit',
-                                                            ),
-                                                            IconButton(
-                                                              icon: Icon(Icons.delete, size: Responsive.getIconSize(context, multiplier: 0.8)),
-                                                              color: Colors.red,
-                                                              onPressed: () => _deleteItem(item),
-                                                              tooltip: 'Delete',
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          );
+                                          return _buildInventoryCardMobile(item, context, isDarkMode: isDarkMode);
                                         },
                                       )
                                     : Container(
@@ -1527,15 +1587,19 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                             child: DataTable(
                                               headingRowHeight: Responsive.getDataTableRowHeight(context),
                                               dataRowHeight: Responsive.getDataTableRowHeight(context),
-                                              columns: [
-                                                const DataColumn(label: Text('Item')),
-                                                const DataColumn(label: Text('Category')),
-                                                const DataColumn(label: Text('Current Stock')),
-                                                const DataColumn(label: Text('Min Stock')),
-                                                const DataColumn(label: Text('Unit Cost')),
-                                                const DataColumn(label: Text('Total Value')),
-                                                const DataColumn(label: Text('Status')),
-                                                const DataColumn(label: Text('Actions')),
+                                              headingTextStyle: TextStyle(
+                                                fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 13, desktop: 14),
+                                                fontWeight: FontWeight.bold,
+                                                color: primaryColor, // Use the primaryColor from settings
+                                              ),                                              columns: const [
+                                                DataColumn(label: Text('Item')),
+                                                DataColumn(label: Text('Category')),
+                                                DataColumn(label: Text('Current Stock')),
+                                                DataColumn(label: Text('Min Stock')),
+                                                DataColumn(label: Text('Unit Cost')),
+                                                DataColumn(label: Text('Total Value')),
+                                                DataColumn(label: Text('Status')),
+                                                DataColumn(label: Text('Actions')),
                                               ],
                                               rows: _filteredItems.map((item) {
                                                 return DataRow(
@@ -1545,7 +1609,10 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                                         constraints: BoxConstraints(maxWidth: Responsive.width(context) * 0.15),
                                                         child: Text(
                                                           item.name,
-                                                          style: const TextStyle(fontWeight: FontWeight.bold),
+                                                          style: TextStyle(
+                                                            fontWeight: FontWeight.bold,
+                                                            color: textColor,
+                                                          ),
                                                           maxLines: 2,
                                                           overflow: TextOverflow.ellipsis,
                                                         ),
@@ -1590,36 +1657,46 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                                       ),
                                                     ),
                                                     DataCell(
-                                                      Text('${item.minimumStock} ${item.unit}'),
+                                                      Text(
+                                                        '${item.minimumStock} ${item.unit}',
+                                                        style: TextStyle(color: textColor),
+                                                      ),
                                                     ),
                                                     DataCell(
                                                       Text(
                                                         '₱${item.unitCost.toStringAsFixed(2)}',
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
                                                           fontWeight: FontWeight.bold,
-                                                          color: Colors.deepOrange,
+                                                          color: primaryColor,
                                                         ),
                                                       ),
                                                     ),
                                                     DataCell(
                                                       Text(
                                                         '₱${item.stockValue.toStringAsFixed(2)}',
-                                                        style: const TextStyle(
+                                                        style: TextStyle(
                                                           fontWeight: FontWeight.bold,
-                                                          color: Colors.deepOrange,
+                                                          color: primaryColor,
                                                         ),
                                                       ),
                                                     ),
                                                     DataCell(
-                                                      Chip(
-                                                        label: Text(
-                                                          item.status,
-                                                          style: TextStyle(fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13)),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                        decoration: BoxDecoration(
+                                                          color: _getStatusColor(item.status).withOpacity(0.1),
+                                                          borderRadius: BorderRadius.circular(20),
+                                                          border: Border.all(
+                                                            color: _getStatusColor(item.status).withOpacity(0.3),
+                                                          ),
                                                         ),
-                                                        backgroundColor: _getStatusColor(item.status),
-                                                        labelStyle: TextStyle(
-                                                          color: _getStatusTextColor(item.status),
-                                                          fontWeight: FontWeight.bold,
+                                                        child: Text(
+                                                          item.status,
+                                                          style: TextStyle(
+                                                            fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
+                                                            fontWeight: FontWeight.bold,
+                                                            color: _getStatusColor(item.status),
+                                                          ),
                                                         ),
                                                       ),
                                                     ),
@@ -1662,24 +1739,51 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
 
                   SizedBox(height: Responsive.getLargeSpacing(context).height),
 
+                  // ENHANCED: Item Summary Card - Matching sales_monitoring style
                   Container(
                     constraints: BoxConstraints(
                       minHeight: 150,
                     ),
                     child: Card(
-                      elevation: 3,
+                      elevation: isDarkMode ? 2 : 3,
+                      color: cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                          width: 1,
+                        ),
+                      ),
                       child: Padding(
                         padding: Responsive.getCardPadding(context),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              'ITEM SUMMARY',
-                              style: TextStyle(
-                                fontSize: Responsive.getTitleFontSize(context),
-                                fontWeight: FontWeight.bold,
-                              ),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: primaryColor.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(Icons.summarize, color: primaryColor, size: 20),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'ITEM SUMMARY',
+                                    style: TextStyle(
+                                      fontSize: Responsive.getTitleFontSize(context),
+                                      fontWeight: FontWeight.bold,
+                                      color: primaryColor,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
                             SizedBox(height: Responsive.getSpacing(context).height),
                             isMobile
@@ -1689,101 +1793,17 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                     itemCount: _itemTypes.length,
                                     itemBuilder: (context, index) {
                                       final type = _itemTypes.elementAt(index);
-                                      final typeItems = _inventoryItems
-                                          .where((item) => item.name == type);
-                                      final totalStock = typeItems.fold<double>(
-                                          0, (sum, item) => sum + item.currentStock);
-                                      final totalValue = typeItems.fold<double>(
-                                          0.0, (sum, item) => sum + item.stockValue);
-                                      
-                                      return Card(
-                                        margin: EdgeInsets.only(bottom: Responsive.getPaddingSize(context)),
-                                        child: Padding(
-                                          padding: Responsive.getCardPadding(context),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                type,
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: Responsive.getSubtitleFontSize(context),
-                                                ),
-                                              ),
-                                              SizedBox(height: Responsive.getSmallSpacing(context).height),
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        'Items:',
-                                                        style: TextStyle(
-                                                          fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        '${typeItems.length}',
-                                                        style: TextStyle(
-                                                          fontWeight: FontWeight.bold,
-                                                          fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        'Total Stock:',
-                                                        style: TextStyle(
-                                                          fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        totalStock.toStringAsFixed(0),
-                                                        style: TextStyle(
-                                                          fontWeight: FontWeight.bold,
-                                                          fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        'Total Value:',
-                                                        style: TextStyle(
-                                                          fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                      Text(
-                                                        '₱${totalValue.toStringAsFixed(2)}',
-                                                        style: TextStyle(
-                                                          fontWeight: FontWeight.bold,
-                                                          fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
-                                                          color: Colors.deepOrange,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
+                                      return _buildTypeSummaryMobile(type, context, isDarkMode: isDarkMode);
                                     },
                                   )
                                 : DataTable(
                                     headingRowHeight: Responsive.getDataTableRowHeight(context),
                                     dataRowHeight: Responsive.getDataTableRowHeight(context),
+                                    headingTextStyle: TextStyle(
+                                      fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 13, desktop: 14),
+                                      fontWeight: FontWeight.bold,
+                                      color: primaryColor, // Use the primaryColor from settings
+                                    ),
                                     columns: const [
                                       DataColumn(label: Text('Item Type')),
                                       DataColumn(label: Text('Items')),
@@ -1802,12 +1822,23 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                                         DataCell(
                                           Text(
                                             type,
-                                            style: const TextStyle(fontWeight: FontWeight.bold),
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: textColor,
+                                            ),
                                           ),
                                         ),
-                                        DataCell(Text('${typeItems.length}')),
-                                        DataCell(Text(totalStock.toStringAsFixed(0))),
-                                        DataCell(Text('₱${totalValue.toStringAsFixed(2)}')),
+                                        DataCell(Text('${typeItems.length}', style: TextStyle(color: textColor))),
+                                        DataCell(Text(totalStock.toStringAsFixed(0), style: TextStyle(color: textColor))),
+                                        DataCell(
+                                          Text(
+                                            '₱${totalValue.toStringAsFixed(2)}',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: primaryColor,
+                                            ),
+                                          ),
+                                        ),
                                       ]);
                                     }).toList(),
                                   ),
@@ -1819,13 +1850,21 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
 
                   SizedBox(height: Responsive.getLargeSpacing(context).height),
 
+                  // ENHANCED: Inventory Guidelines Card - Matching sales_monitoring style
                   Container(
                     constraints: BoxConstraints(
                       minHeight: 150,
                     ),
                     child: Card(
-                      elevation: 3,
-                      color: Colors.blue.shade50,
+                      elevation: isDarkMode ? 2 : 3,
+                      color: Colors.blue.shade50.withOpacity(isDarkMode ? 0.2 : 1),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: isDarkMode ? Colors.blue.shade700 : Colors.blue.shade300,
+                          width: 1.5,
+                        ),
+                      ),
                       child: Padding(
                         padding: Responsive.getCardPadding(context),
                         child: Column(
@@ -1834,14 +1873,25 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.info, color: Colors.blue, size: Responsive.getIconSize(context, multiplier: 1.2)),
-                                SizedBox(width: Responsive.getHorizontalSpacing(context).width),
-                                Text(
-                                  'INVENTORY GUIDELINES',
-                                  style: TextStyle(
-                                    fontSize: Responsive.getSubtitleFontSize(context),
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue,
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(Icons.info, color: Colors.blue, size: 20),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'INVENTORY GUIDELINES',
+                                    style: TextStyle(
+                                      fontSize: Responsive.getSubtitleFontSize(context),
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ],
@@ -1850,18 +1900,26 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
                             _buildGuidelineItem(
                               'Check inventory daily before accepting large orders',
                               context,
+                              isDarkMode: isDarkMode,
+                              iconColor: Colors.blue,
                             ),
                             _buildGuidelineItem(
                               'Reorder when stock reaches minimum level',
                               context,
+                              isDarkMode: isDarkMode,
+                              iconColor: Colors.blue,
                             ),
                             _buildGuidelineItem(
                               'Maintain 3-5 days worth of inventory for peak seasons',
                               context,
+                              isDarkMode: isDarkMode,
+                              iconColor: Colors.blue,
                             ),
                             _buildGuidelineItem(
                               'Track seasonal demand patterns (weddings, holidays, fiestas)',
                               context,
+                              isDarkMode: isDarkMode,
+                              iconColor: Colors.blue,
                             ),
                           ],
                         ),
@@ -1877,80 +1935,387 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color, BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16)),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.2)),
+  Widget _buildInventoryCardMobile(ProductionInventory item, BuildContext context, {bool isDarkMode = false}) {
+    final primaryColor = getPrimaryColor();
+    final textColor = isDarkMode ? Colors.white : Colors.black87;
+    final mutedTextColor = isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600;
+    
+    return Card(
+      margin: EdgeInsets.only(bottom: Responsive.getPaddingSize(context)),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+        ),
       ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: Responsive.getFontSize(context, mobile: 20, tablet: 24, desktop: 28)),
-          SizedBox(width: Responsive.getHorizontalSpacing(context).width),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: InkWell(
+        onTap: () => _showItemDetails(item),
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: Responsive.getCardPadding(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${item.name} (${item.category})',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: Responsive.getSubtitleFontSize(context),
+                            color: textColor,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _getItemColor(item.name).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            item.category,
+                            style: TextStyle(
+                              fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                              color: _getItemColor(item.name),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(item.status).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _getStatusColor(item.status).withOpacity(0.3),
+                      ),
+                    ),
+                    child: Text(
+                      item.status,
+                      style: TextStyle(
+                        fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                        fontWeight: FontWeight.bold,
+                        color: _getStatusColor(item.status),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    Icons.inventory,
+                    size: Responsive.getIconSize(context, multiplier: 0.8),
+                    color: mutedTextColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Stock: ${item.currentStock} ${item.unit}',
+                      style: TextStyle(
+                        fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 13, desktop: 14),
+                        color: textColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.attach_money,
+                    size: Responsive.getIconSize(context, multiplier: 0.8),
+                    color: mutedTextColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '₱${item.unitCost.toStringAsFixed(2)}/${item.unit}',
+                    style: TextStyle(
+                      fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 13, desktop: 14),
+                      color: textColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Min Stock: ${item.minimumStock} ${item.unit}',
+                        style: TextStyle(
+                          fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
+                          color: mutedTextColor,
+                        ),
+                      ),
+                      Text(
+                        'Total: ₱${item.stockValue.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 13, desktop: 14),
+                          fontWeight: FontWeight.bold,
+                          color: primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.restore, size: Responsive.getIconSize(context, multiplier: 0.9)),
+                        color: Colors.blue,
+                        onPressed: () => _restockItem(item),
+                        tooltip: 'Restock',
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.edit, size: Responsive.getIconSize(context, multiplier: 0.9)),
+                        color: Colors.green,
+                        onPressed: () => _editItem(item),
+                        tooltip: 'Edit',
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.delete, size: Responsive.getIconSize(context, multiplier: 0.9)),
+                        color: Colors.red,
+                        onPressed: () => _deleteItem(item),
+                        tooltip: 'Delete',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTypeSummaryMobile(String type, BuildContext context, {bool isDarkMode = false}) {
+    final textColor = isDarkMode ? Colors.white : Colors.black87;
+    final mutedTextColor = isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600;
+    
+    final typeItems = _inventoryItems.where((item) => item.name == type);
+    final totalStock = typeItems.fold<double>(0, (sum, item) => sum + item.currentStock);
+    final totalValue = typeItems.fold<double>(0.0, (sum, item) => sum + item.stockValue);
+    
+    return Card(
+      margin: EdgeInsets.only(bottom: Responsive.getPaddingSize(context)),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+        ),
+      ),
+      child: Padding(
+        padding: Responsive.getCardPadding(context),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              type,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: Responsive.getSubtitleFontSize(context),
+                color: textColor,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14),
-                    color: Colors.grey.shade600,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Items',
+                        style: TextStyle(
+                          fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                          color: mutedTextColor,
+                        ),
+                      ),
+                      Text(
+                        '${typeItems.length}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
+                          color: textColor,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Total Stock',
+                        style: TextStyle(
+                          fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                          color: mutedTextColor,
+                        ),
+                      ),
+                      Text(
+                        totalStock.toStringAsFixed(0),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
+                          color: textColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Total Value',
+                        style: TextStyle(
+                          fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                          color: mutedTextColor,
+                        ),
+                      ),
+                      Text(
+                        '₱${totalValue.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
+                          color: getPrimaryColor(),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon, Color color, BuildContext context, 
+    {bool isDarkMode = false, String? subtitle}) {
+    final primaryColor = getPrimaryColor();
+    
+    return Container(
+      padding: EdgeInsets.all(Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16) * 0.8),
+      decoration: BoxDecoration(
+        color: isDarkMode ? color.withOpacity(0.15) : color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDarkMode ? color.withOpacity(0.3) : color.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(isDarkMode ? 0.2 : 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isDarkMode ? color.withOpacity(0.3) : color.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: Responsive.getIconSize(context, multiplier: 1.2)),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14) * 0.9,
+              color: isDarkMode ? Colors.grey.shade300 : Colors.grey.shade600,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18) * 0.9,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: Responsive.getFontSize(context, mobile: 8, tablet: 9, desktop: 10) * 0.9,
+                color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildGuidelineItem(String text, BuildContext context) {
+  Widget _buildGuidelineItem(String text, BuildContext context, {
+    bool isDarkMode = false,
+    Color iconColor = Colors.blue,
+  }) {
+    final textColor = isDarkMode ? Colors.white : Colors.black87;
+    
     return Padding(
       padding: EdgeInsets.symmetric(vertical: Responsive.getFontSize(context, mobile: 4, tablet: 5, desktop: 6)),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.check_circle, size: Responsive.getIconSize(context, multiplier: 0.8), color: Colors.blue),
+          Icon(Icons.check_circle, 
+              size: Responsive.getIconSize(context, multiplier: 0.8), 
+              color: iconColor),
           SizedBox(width: Responsive.getHorizontalSpacing(context).width),
           Expanded(
             child: Text(
               text,
               style: TextStyle(
-                fontSize: Responsive.getBodyFontSize(context),
+                fontSize: Responsive.getBodyFontSize(context) * 0.95,
+                color: textColor,
               ),
             ),
           ),
         ],
-      )
+      ),
     );
   }
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'In Stock': return Colors.green.shade100;
-      case 'Low Stock': return Colors.orange.shade100;
-      case 'Out of Stock': return Colors.red.shade100;
-      default: return Colors.grey.shade100;
-    }
-  }
-
-  Color _getStatusTextColor(String status) {
-    switch (status) {
-      case 'In Stock': return Colors.green.shade800;
-      case 'Low Stock': return Colors.orange.shade800;
-      case 'Out of Stock': return Colors.red.shade800;
-      default: return Colors.grey.shade800;
+      case 'In Stock': return Colors.green;
+      case 'Low Stock': return Colors.orange;
+      case 'Out of Stock': return Colors.red;
+      default: return Colors.grey;
     }
   }
 

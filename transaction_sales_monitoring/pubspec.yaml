@@ -10,22 +10,46 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Image/media handling
   image_picker: ^1.0.4
-  mysql1: ^0.20.0
+  
+  # Local storage
   shared_preferences: ^2.2.3
-  intl: ^0.20.2
+  
+  # Internationalization
+  intl: ^0.19.0
+
+  # WebView
   webview_flutter: ^4.7.0
-  webview_flutter_android: ^4.4.1
-  webview_flutter_wkwebview: ^3.5.1
-  lottie: ^2.7.0
-  crypto: ^3.0.7
-  provider: ^6.1.5+1
-  connectivity_plus: ^7.0.0
+  webview_flutter_android: ^3.16.0
+  webview_flutter_wkwebview: ^3.15.0
+  
+  # Animations
+  lottie: ^3.1.2
+  
+  # Cryptography
+  crypto: ^3.0.3
+  
+  # State management
+  provider: ^6.1.2
+  
+  # Firebase - UPDATED TO COMPATIBLE 3.X/5.X SERIES
+  firebase_core: ^3.1.1
+  firebase_auth: ^5.1.1
+  cloud_firestore: ^5.0.2
+  firebase_storage: ^12.1.0
+  firebase_storage_web: ^3.10.2  # Now compatible with core 3.x
+  
+  # Network connectivity
+  connectivity_plus: ^5.0.2
+  
+  # UUID generation
+  uuid: ^4.4.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
+  flutter_lints: ^3.0.0 # Lint 6.0.0 is likely too high for SDK 3.0.0
 
 flutter:
   uses-material-design: true

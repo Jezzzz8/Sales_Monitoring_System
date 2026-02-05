@@ -27,6 +27,13 @@ class AppSettings {
   // Data
   bool autoBackup;
   int backupFrequency; // in hours
+
+  static AppSettings defaultSettings() {
+    return AppSettings(
+      primaryColor: 'Deep Orange',
+      themeMode: 'Light',
+    );
+  }
   
   // Default constructor with default values
   AppSettings({

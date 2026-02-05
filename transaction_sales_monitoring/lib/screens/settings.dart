@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/theme_manager.dart';
-import '../utils/theme_provider.dart';
+import '../providers/theme_provider.dart';
 import '../services/auth_service.dart';
 import '../models/user_model.dart';
 import '../models/settings_model.dart';
@@ -340,10 +340,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _applyThemeUpdateInstantly(defaultSettings, 'both');
       
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Settings have been reset to defaults. Don\'t forget to save!'),
+        const SnackBar(
+          content: Text('Settings have been reset to defaults. Don\'t forget to save!'),
           backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 2),
+          duration: Duration(seconds: 2),
         ),
       );
     }
@@ -365,7 +365,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final isOwner = _currentUser?.role == UserRole.owner;
     final isAdmin = _currentUser?.role == UserRole.admin;
     final isCashier = _currentUser?.role == UserRole.cashier;
-    final isStaff = _currentUser?.role == UserRole.staff;
+    final isClerk = _currentUser?.role == UserRole.clerk;
 
     return WillPopScope(
       onWillPop: _onWillPop,
@@ -475,7 +475,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _settings.emailNotifications,
               (value) => _updateSetting('emailNotifications', value),
             ),
-            if (isOwner || isAdmin || isStaff)
+            if (isOwner || isAdmin || isClerk)
               _buildSettingSwitch(
                 Icons.inventory,
                 'Low Stock Alerts',
@@ -552,7 +552,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
 
             // Data Settings
-            if (isStaff || isOwner || isAdmin) ...[
+            if (isClerk || isOwner || isAdmin) ...[
               _buildSection('DATA SETTINGS'),
               _buildSettingSwitch(
                 Icons.backup,

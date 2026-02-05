@@ -47,7 +47,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
       ),
   ];
 
-
   // Simple data structures
   List<Map<String, dynamic>> get _dailySalesData {
     final dailySales = <DateTime, double>{};
@@ -115,6 +114,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     final primaryColor = getPrimaryColor();
     final isMobile = Responsive.isMobile(context);
     final isTablet = Responsive.isTablet(context);
+    final isDesktop = Responsive.isDesktop(context);
     final screenWidth = MediaQuery.of(context).size.width;
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     
@@ -183,22 +183,9 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                     ],
                   ),
 
-                  // ENHANCED: Tax Breakdown Card with theme and responsive design
-                  const SizedBox(height: 16),
-                  _buildTaxBreakdownCard(
-                    primaryColor,
-                    isMobile,
-                    isTablet,
-                    isDarkMode,
-                    cardColor,
-                    textColor,
-                    mutedTextColor,
-                    context,
-                  ),
-
                   const SizedBox(height: 16),
 
-                  // Filters Card with theme
+                  // Filters Card with theme - MOVED TO TOP
                   Container(
                     constraints: BoxConstraints(
                       minHeight: isMobile ? 200 : 150,
@@ -387,7 +374,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
 
                   const SizedBox(height: 16),
 
-                  // Sales Trend Chart and Category Performance in Desktop/Tablet Mode
+                  // Sales Trend Chart and Category Performance in Desktop/Tablet Mode - MOVED TO TOP
                   if (!isMobile)
                     Container(
                       constraints: BoxConstraints(
@@ -486,105 +473,122 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
 
                   // Mobile layout - Sales Trend only (Category Performance will be below)
                   if (isMobile)
-                    Container(
-                      constraints: BoxConstraints(
-                        minHeight: 300,
-                      ),
-                      child: Card(
-                        elevation: isDarkMode ? 2 : 3,
-                        color: cardColor,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(
-                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                            width: 1,
+                    Column(
+                      children: [
+                        Container(
+                          constraints: BoxConstraints(
+                            minHeight: 300,
+                          ),
+                          child: Card(
+                            elevation: isDarkMode ? 2 : 3,
+                            color: cardColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                width: 1,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: Responsive.getCardPadding(context),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'SALES TREND',
+                                    style: TextStyle(
+                                      fontSize: Responsive.getTitleFontSize(context),
+                                      fontWeight: FontWeight.bold,
+                                      color: textColor,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  SizedBox(
+                                    height: isMobile ? 250 : 300,
+                                    child: Center(
+                                      child: _buildSalesChart(primaryColor, isMobile, isDarkMode: isDarkMode),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
-                        child: Padding(
-                          padding: Responsive.getCardPadding(context),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'SALES TREND',
-                                style: TextStyle(
-                                  fontSize: Responsive.getTitleFontSize(context),
-                                  fontWeight: FontWeight.bold,
-                                  color: textColor,
-                                ),
-                                textAlign: TextAlign.center,
+                        const SizedBox(height: 16),
+
+                        // Category Performance - Pie Chart for Mobile (placed below Sales Trend)
+                        Container(
+                          constraints: BoxConstraints(
+                            minHeight: 350,
+                          ),
+                          child: Card(
+                            elevation: isDarkMode ? 2 : 3,
+                            color: cardColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                width: 1,
                               ),
-                              const SizedBox(height: 16),
-                              SizedBox(
-                                height: isMobile ? 250 : 300,
-                                child: Center(
-                                  child: _buildSalesChart(primaryColor, isMobile, isDarkMode: isDarkMode),
-                                ),
+                            ),
+                            child: Padding(
+                              padding: Responsive.getCardPadding(context),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'CATEGORY DISTRIBUTION',
+                                    style: TextStyle(
+                                      fontSize: Responsive.getTitleFontSize(context),
+                                      fontWeight: FontWeight.bold,
+                                      color: textColor,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Center(
+                                    child: SizedBox(
+                                      height: 250,
+                                      width: 250,
+                                      child: _buildResponsivePieChart(250, isDarkMode: isDarkMode),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  ..._categorySalesData.map((data) => 
+                                    Center(
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                          maxWidth: screenWidth * 0.8,
+                                        ),
+                                        child: _buildCategoryLegendItem(data, isDarkMode: isDarkMode),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
 
                   const SizedBox(height: 16),
 
-                  // Category Performance - Pie Chart for Mobile (placed below Sales Trend)
-                  if (isMobile)
-                    Container(
-                      constraints: BoxConstraints(
-                        minHeight: 350,
-                      ),
-                      child: Card(
-                        elevation: isDarkMode ? 2 : 3,
-                        color: cardColor,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(
-                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                            width: 1,
-                          ),
-                        ),
-                        child: Padding(
-                          padding: Responsive.getCardPadding(context),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'CATEGORY DISTRIBUTION',
-                                style: TextStyle(
-                                  fontSize: Responsive.getTitleFontSize(context),
-                                  fontWeight: FontWeight.bold,
-                                  color: textColor,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 16),
-                              Center(
-                                child: SizedBox(
-                                  height: 250,
-                                  width: 250,
-                                  child: _buildResponsivePieChart(250, isDarkMode: isDarkMode),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              ..._categorySalesData.map((data) => 
-                                Center(
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                      maxWidth: screenWidth * 0.8,
-                                    ),
-                                    child: _buildCategoryLegendItem(data, isDarkMode: isDarkMode),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                  // ENHANCED: Tax Breakdown Card with theme and responsive design - NOW SMALLER FOR DESKTOP
+                  _buildTaxBreakdownCard(
+                    primaryColor,
+                    isMobile,
+                    isTablet,
+                    isDesktop,
+                    isDarkMode,
+                    cardColor,
+                    textColor,
+                    mutedTextColor,
+                    context,
+                  ),
 
                   const SizedBox(height: 16),
 
@@ -839,11 +843,12 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     );
   }
 
-  // ENHANCED: Tax Breakdown Card with consistent theme
+  // ENHANCED: Tax Breakdown Card with consistent theme - UPDATED FOR SMALLER DESKTOP CARDS
   Widget _buildTaxBreakdownCard(
     Color primaryColor,
     bool isMobile,
     bool isTablet,
+    bool isDesktop,
     bool isDarkMode,
     Color cardColor,
     Color textColor,
@@ -861,7 +866,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
         ),
       ),
       child: Padding(
-        padding: Responsive.getCardPadding(context),
+        padding: EdgeInsets.all(isDesktop ? 16 : Responsive.getCardPadding(context).horizontal),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -997,14 +1002,14 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   ),
                 ],
               )
-            else
+            else if (isTablet)
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: isTablet ? 2 : 4,
+                crossAxisCount: 2,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: isTablet ? 1.8 : 1.5,
+                childAspectRatio: 1.8,
                 children: [
                   _buildDesktopTaxCard(
                     'Net Sales',
@@ -1016,6 +1021,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                     context,
                     textColor: textColor,
                     mutedTextColor: mutedTextColor,
+                    isDesktop: isDesktop,
                   ),
                   _buildDesktopTaxCard(
                     'Tax Rate',
@@ -1028,6 +1034,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                     textColor: textColor,
                     mutedTextColor: mutedTextColor,
                     isPercent: true,
+                    isDesktop: isDesktop,
                   ),
                   _buildDesktopTaxCard(
                     'Tax Amount',
@@ -1039,6 +1046,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                     context,
                     textColor: textColor,
                     mutedTextColor: mutedTextColor,
+                    isDesktop: isDesktop,
                   ),
                   _buildDesktopTaxCard(
                     'Total Revenue',
@@ -1051,6 +1059,74 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                     textColor: textColor,
                     mutedTextColor: mutedTextColor,
                     isTotal: true,
+                    isDesktop: isDesktop,
+                  ),
+                ],
+              )
+            else
+              // DESKTOP LAYOUT - 4 cards in a row with smaller size
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildDesktopTaxCard(
+                      'Net Sales',
+                      _netSales,
+                      'Before tax',
+                      primaryColor,
+                      Icons.money_off,
+                      isDarkMode,
+                      context,
+                      textColor: textColor,
+                      mutedTextColor: mutedTextColor,
+                      isDesktop: true,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildDesktopTaxCard(
+                      'Tax Rate',
+                      _taxRate,
+                      'Applied rate',
+                      primaryColor,
+                      Icons.percent,
+                      isDarkMode,
+                      context,
+                      textColor: textColor,
+                      mutedTextColor: mutedTextColor,
+                      isPercent: true,
+                      isDesktop: true,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildDesktopTaxCard(
+                      'Tax Amount',
+                      _totalTax,
+                      'Calculated tax',
+                      primaryColor,
+                      Icons.request_quote,
+                      isDarkMode,
+                      context,
+                      textColor: textColor,
+                      mutedTextColor: mutedTextColor,
+                      isDesktop: true,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildDesktopTaxCard(
+                      'Total Revenue',
+                      _totalRevenue,
+                      'Net + Tax',
+                      primaryColor,
+                      Icons.attach_money,
+                      isDarkMode,
+                      context,
+                      textColor: textColor,
+                      mutedTextColor: mutedTextColor,
+                      isTotal: true,
+                      isDesktop: true,
+                    ),
                   ),
                 ],
               ),
@@ -1198,7 +1274,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     );
   }
 
-  // Helper method for desktop tax cards
+  // Helper method for desktop tax cards - UPDATED TO BE SMALLER FOR DESKTOP
   Widget _buildDesktopTaxCard(
     String label,
     double value,
@@ -1209,11 +1285,25 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     BuildContext context, {
     bool isPercent = false,
     bool isTotal = false,
+    bool isDesktop = false,
     Color? textColor,
     Color? mutedTextColor,
   }) {
     final cardColor = isDarkMode ? Colors.grey.shade800 : Colors.white;
     final borderColor = isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300;
+    
+    // Smaller padding for desktop
+    final padding = isDesktop ? const EdgeInsets.all(10) : const EdgeInsets.all(12);
+    final iconSize = isDesktop ? 20.0 : 24.0;
+    final titleSize = isDesktop ? 
+      Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13) :
+      Responsive.getFontSize(context, mobile: 12, tablet: 13, desktop: 14);
+    final valueSize = isDesktop ? 
+      Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16) :
+      Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18);
+    final descSize = isDesktop ? 
+      Responsive.getFontSize(context, mobile: 9, tablet: 10, desktop: 11) :
+      Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12);
     
     return Container(
       decoration: BoxDecoration(
@@ -1227,26 +1317,26 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
             ? [
                 BoxShadow(
                   color: primaryColor.withOpacity(isDarkMode ? 0.3 : 0.1),
-                  blurRadius: 8,
+                  blurRadius: isDesktop ? 6 : 8,
                   offset: const Offset(0, 2),
                 ),
               ]
             : [
                 BoxShadow(
                   color: Colors.black.withOpacity(isDarkMode ? 0.1 : 0.05),
-                  blurRadius: 4,
+                  blurRadius: isDesktop ? 3 : 4,
                   offset: const Offset(0, 2),
                 ),
               ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: padding,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.all(isDesktop ? 6 : 8),
               decoration: BoxDecoration(
                 color: primaryColor.withOpacity(0.1),
                 shape: BoxShape.circle,
@@ -1254,14 +1344,14 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
               child: Icon(
                 icon,
                 color: primaryColor,
-                size: 24,
+                size: iconSize,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               label,
               style: TextStyle(
-                fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 13, desktop: 14),
+                fontSize: titleSize,
                 color: mutedTextColor ?? Colors.grey.shade600,
                 fontWeight: FontWeight.w500,
               ),
@@ -1271,17 +1361,17 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
             Text(
               isPercent ? '${value.toStringAsFixed(1)}%' : '₱${value.toStringAsFixed(2)}',
               style: TextStyle(
-                fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
+                fontSize: valueSize,
                 fontWeight: isTotal ? FontWeight.bold : FontWeight.w700,
                 color: primaryColor,
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               description,
               style: TextStyle(
-                fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                fontSize: descSize,
                 color: mutedTextColor ?? Colors.grey.shade600,
               ),
               textAlign: TextAlign.center,
