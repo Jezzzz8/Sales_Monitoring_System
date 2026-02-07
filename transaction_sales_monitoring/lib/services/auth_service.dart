@@ -2,7 +2,6 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../firebase/firebase_config.dart';
 import '../models/user_model.dart' as app_user;
 import 'user_service.dart';
 import 'firebase_auth_service.dart';

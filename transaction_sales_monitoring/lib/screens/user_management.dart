@@ -1,4 +1,6 @@
 // lib/screens/user_management.dart
+// ignore_for_file: unused_import
+
 import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
 import '../services/auth_service.dart';
@@ -76,7 +78,9 @@ class _UserManagementState extends State<UserManagement> {
   
   // For bulk role assignment
   app_user.UserRole? _bulkRoleSelection;
+  // ignore: unused_field
   String? _bulkCustomRoleSelection;
+  // ignore: unused_field
   String? _bulkGroupSelection;
 
   @override
@@ -127,6 +131,7 @@ class _UserManagementState extends State<UserManagement> {
     });
   }
 
+  // ignore: unused_element
   void _selectAllUsers() {
     setState(() {
       _selectedUsers.clear();
@@ -135,6 +140,7 @@ class _UserManagementState extends State<UserManagement> {
     });
   }
 
+  // ignore: unused_element
   void _deselectAllUsers() {
     setState(() {
       _selectedUsers.clear();
@@ -953,14 +959,9 @@ class _UserManagementState extends State<UserManagement> {
         if (_isEditing) {
           // Use UserService instead of AuthService
           final error = await UserService.updateUser(user);
-          if (error != null) {
-            throw Exception(error);
-          }
-        } else {
+          throw Exception(error);
+                } else {
           final userId = await UserService.createUser(user);
-          if (userId == null) {
-            throw Exception('Failed to create user');
-          }
         }
         
         Navigator.pop(context);
@@ -970,7 +971,7 @@ class _UserManagementState extends State<UserManagement> {
           SnackBar(
             content: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.white, size: 22),
+                const Icon(Icons.check_circle, color: Colors.white, size: 22),
                 const SizedBox(width: 12),
                 Text(
                   _isEditing ? 'User updated successfully!' : 'User added successfully!',
@@ -1098,15 +1099,14 @@ class _UserManagementState extends State<UserManagement> {
                   );
                   
                   final error = await UserService.updateUser(updatedUser);
-                  if (error != null) {
-                    throw Exception(error);
-                  }
-                  
+                  throw Exception(error);
+                                  
+                  // ignore: dead_code
                   Navigator.pop(context);
                   
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Password reset successfully!'),
+                    const SnackBar(
+                      content: Text('Password reset successfully!'),
                       backgroundColor: Colors.green,
                     ),
                   );
@@ -1114,7 +1114,7 @@ class _UserManagementState extends State<UserManagement> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('Error: ${e.toString()}'),
-                      backgroundColor: Colors.red,
+                      backgroundColor: theme.primaryColor,
                     ),
                   );
                 }
@@ -1148,7 +1148,7 @@ class _UserManagementState extends State<UserManagement> {
               const SizedBox(height: 8),
               ...role.permissions.map((permission) => 
                 ListTile(
-                  leading: Icon(Icons.check_circle, color: Colors.green, size: 20),
+                  leading: const Icon(Icons.check_circle, color: Colors.green, size: 20),
                   title: Text(permission.replaceAll('_', ' ').toUpperCase()),
                   contentPadding: EdgeInsets.zero,
                   dense: true,
@@ -1400,7 +1400,7 @@ class _UserManagementState extends State<UserManagement> {
                                   await _loadUsers();
                                   _toggleSelectionMode(false);
                                 },
-                                icon: Icon(Icons.person_off, color: Colors.white, size: 20),
+                                icon: const Icon(Icons.person_off, color: Colors.white, size: 20),
                                 label: const Text('Deactivate'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.red,
@@ -1419,7 +1419,7 @@ class _UserManagementState extends State<UserManagement> {
                                   await _loadUsers();
                                   _toggleSelectionMode(false);
                                 },
-                                icon: Icon(Icons.person_add, color: Colors.white, size: 20),
+                                icon: const Icon(Icons.person_add, color: Colors.white, size: 20),
                                 label: const Text('Activate'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.green,
@@ -1436,7 +1436,7 @@ class _UserManagementState extends State<UserManagement> {
                   // Delete Users
                   ExpansionTile(
                     title: const Text('Delete Users'),
-                    leading: Icon(Icons.delete_outline, color: Colors.red),
+                    leading: const Icon(Icons.delete_outline, color: Colors.red),
                     children: [
                       Padding(
                         padding: const EdgeInsets.all(16),

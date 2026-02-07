@@ -106,6 +106,7 @@ class _AdminLoginState extends State<AdminLogin> {
   double _safeSpacing(BuildContext context) => Responsive.getSpacing(context).height ?? 20.0;
   double _safeSmallSpacing(BuildContext context) => Responsive.getSmallSpacing(context).height ?? 8.0;
   double _safeLargeSpacing(BuildContext context) => Responsive.getLargeSpacing(context).height ?? 32.0;
+  // ignore: unused_element
   double _safeHorizontalSpacing(BuildContext context) => Responsive.getHorizontalSpacing(context).width ?? 16.0;
 
   Widget _buildDesktopTabletUI(BuildContext context) {
@@ -372,7 +373,7 @@ class _AdminLoginState extends State<AdminLogin> {
                             
                             // Security Footer
                             Container(
-                              padding: EdgeInsets.symmetric(vertical: 16),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
                               decoration: BoxDecoration(
                                 border: Border(
                                   top: BorderSide(

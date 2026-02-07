@@ -1,3 +1,5 @@
+// ignore_for_file: unused_import
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -15,6 +17,7 @@ class SalesMonitoring extends StatefulWidget {
 }
 
 class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
+  // ignore: unused_field
   final DateTime _selectedDate = DateTime.now();
   String _selectedView = 'Daily';
   String _selectedCategory = 'All';
@@ -159,7 +162,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                         Icons.trending_up,
                         Colors.blue,
                         context,
-                        subtitle: 'Incl. ${_taxRate}% tax',
+                        subtitle: 'Incl. $_taxRate% tax',
                         isDarkMode: isDarkMode,
                       ),
                       _buildStatCard(
@@ -168,7 +171,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                         Icons.arrow_upward,
                         Colors.orange,
                         context,
-                        subtitle: 'Incl. ${_taxRate}% tax',
+                        subtitle: 'Incl. $_taxRate% tax',
                         isDarkMode: isDarkMode,
                       ),
                       _buildStatCard(
@@ -377,7 +380,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   // Sales Trend Chart and Category Performance in Desktop/Tablet Mode - MOVED TO TOP
                   if (!isMobile)
                     Container(
-                      constraints: BoxConstraints(
+                      constraints: const BoxConstraints(
                         minHeight: 350,
                       ),
                       child: Card(
@@ -476,7 +479,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                     Column(
                       children: [
                         Container(
-                          constraints: BoxConstraints(
+                          constraints: const BoxConstraints(
                             minHeight: 300,
                           ),
                           child: Card(
@@ -520,7 +523,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
 
                         // Category Performance - Pie Chart for Mobile (placed below Sales Trend)
                         Container(
-                          constraints: BoxConstraints(
+                          constraints: const BoxConstraints(
                             minHeight: 350,
                           ),
                           child: Card(
@@ -594,7 +597,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
 
                   // Peak Hours Card with theme
                   Container(
-                    constraints: BoxConstraints(
+                    constraints: const BoxConstraints(
                       minHeight: 220,
                     ),
                     child: Card(
@@ -754,7 +757,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
 
                   // Business Insights Card with theme
                   Container(
-                    constraints: BoxConstraints(
+                    constraints: const BoxConstraints(
                       minHeight: 150,
                     ),
                     child: Card(
@@ -927,7 +930,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Formula: Net Sales × ${_taxRate}% = Tax Amount',
+                        'Formula: Net Sales × $_taxRate% = Tax Amount',
                         style: TextStyle(
                           fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
                           color: textColor,

@@ -1,3 +1,5 @@
+// lib/screens/category_management.dart - UPDATED VERSION
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter/material.dart';
 import '../models/category_model.dart';
 import '../services/category_service.dart';
@@ -13,44 +15,29 @@ class CategoryManagement extends StatefulWidget {
 }
 
 class _CategoryManagementState extends State<CategoryManagement> {
-  late List<ProductCategory> _categories = [];
   final TextEditingController _searchController = TextEditingController();
   bool _showInactive = false;
-  bool _isLoading = true;
+  bool _isLoading = false;
   
   @override
-  void initState() {
-    super.initState();
-    _loadCategories();
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
-  
-  Future<void> _loadCategories() async {
-    setState(() {
-      _isLoading = true;
-    });
-    
+
+  Color _parseColor(String hexColor) {
     try {
-      final categories = await CategoryService.getCategoriesByType(widget.categoryType);
-      setState(() {
-        _categories = categories;
-        _isLoading = false;
-      });
+      hexColor = hexColor.replaceAll('#', '');
+      if (hexColor.length == 6) {
+        hexColor = 'FF$hexColor';
+      }
+      if (hexColor.length == 8) {
+        return Color(int.parse(hexColor, radix: 16));
+      }
+      return Colors.blue;
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
+      return Colors.blue;
     }
-  }
-  
-  List<ProductCategory> get _filteredCategories {
-    return _categories.where((category) {
-      final matchesSearch = _searchController.text.isEmpty ||
-          category.name.toLowerCase().contains(_searchController.text.toLowerCase()) ||
-          category.description.toLowerCase().contains(_searchController.text.toLowerCase());
-      final matchesActive = _showInactive || category.isActive;
-      
-      return matchesSearch && matchesActive;
-    }).toList();
   }
   
   void _addCategory() {
@@ -58,6 +45,8 @@ class _CategoryManagementState extends State<CategoryManagement> {
     final descriptionController = TextEditingController();
     final displayOrderController = TextEditingController(text: '0');
     bool isActive = true;
+    String selectedColor = '#2196F3';
+    String selectedIcon = ''; // Add icon field
     
     showDialog(
       context: context,
@@ -105,6 +94,88 @@ class _CategoryManagementState extends State<CategoryManagement> {
                     keyboardType: TextInputType.number,
                   ),
                   const SizedBox(height: 12),
+                  
+                  // Icon Selection (You can replace this with an icon picker)
+                  TextFormField(
+                    controller: TextEditingController(text: selectedIcon),
+                    onChanged: (value) {
+                      selectedIcon = value;
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Icon Name',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.emoji_objects),
+                      hintText: 'pig, food, drink, etc.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Color Picker Section
+                  Row(
+                    children: [
+                      const Icon(Icons.color_lens, color: Colors.deepPurple),
+                      const SizedBox(width: 8),
+                      const Text('Color:'),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Pick a color'),
+                              content: SingleChildScrollView(
+                                child: ColorPicker(
+                                  pickerColor: _parseColor(selectedColor),
+                                  onColorChanged: (color) {
+                                    setState(() {
+                                      selectedColor = '#${color.value.toRadixString(16).substring(2)}';
+                                    });
+                                  },
+                                  showLabel: true,
+                                  pickerAreaHeightPercent: 0.8,
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  child: const Text('OK'),
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: _parseColor(selectedColor),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          controller: TextEditingController(text: selectedColor),
+                          onChanged: (value) {
+                            setState(() {
+                              selectedColor = value;
+                            });
+                          },
+                          decoration: const InputDecoration(
+                            labelText: 'Hex Color',
+                            border: OutlineInputBorder(),
+                            hintText: '#2196F3',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  
                   Row(
                     children: [
                       Checkbox(
@@ -139,25 +210,36 @@ class _CategoryManagementState extends State<CategoryManagement> {
                   }
                   
                   final newCategory = ProductCategory(
-                    id: DateTime.now().millisecondsSinceEpoch.toString(),
+                    id: '${widget.categoryType}_${DateTime.now().millisecondsSinceEpoch}',
                     name: nameController.text,
                     description: descriptionController.text,
                     type: widget.categoryType,
                     displayOrder: int.tryParse(displayOrderController.text) ?? 0,
                     isActive: isActive,
+                    color: selectedColor,
+                    icon: selectedIcon,
                     createdAt: DateTime.now(),
                   );
                   
-                  await CategoryService.addCategory(newCategory);
-                  await _loadCategories();
-                  
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Category added successfully'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
+                  try {
+                    await CategoryService.addCategory(newCategory);
+                    
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Category added successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } catch (e) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error adding category: ${e.toString()}'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.deepOrange,
@@ -176,6 +258,8 @@ class _CategoryManagementState extends State<CategoryManagement> {
     final descriptionController = TextEditingController(text: category.description);
     final displayOrderController = TextEditingController(text: category.displayOrder.toString());
     bool isActive = category.isActive;
+    String selectedColor = category.color;
+    String selectedIcon = category.icon;
     
     showDialog(
       context: context,
@@ -222,6 +306,88 @@ class _CategoryManagementState extends State<CategoryManagement> {
                     keyboardType: TextInputType.number,
                   ),
                   const SizedBox(height: 12),
+                  
+                  // Icon Selection
+                  TextFormField(
+                    controller: TextEditingController(text: selectedIcon),
+                    onChanged: (value) {
+                      selectedIcon = value;
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Icon Name',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.emoji_objects),
+                      hintText: 'pig, food, drink, etc.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Color Picker Section
+                  Row(
+                    children: [
+                      const Icon(Icons.color_lens, color: Colors.deepPurple),
+                      const SizedBox(width: 8),
+                      const Text('Color:'),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Pick a color'),
+                              content: SingleChildScrollView(
+                                child: ColorPicker(
+                                  pickerColor: _parseColor(selectedColor),
+                                  onColorChanged: (color) {
+                                    setState(() {
+                                      selectedColor = '#${color.value.toRadixString(16).substring(2)}';
+                                    });
+                                  },
+                                  showLabel: true,
+                                  pickerAreaHeightPercent: 0.8,
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  child: const Text('OK'),
+                                  onPressed: () {
+                                    Navigator.of(context).pop();
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: _parseColor(selectedColor),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          controller: TextEditingController(text: selectedColor),
+                          onChanged: (value) {
+                            setState(() {
+                              selectedColor = value;
+                            });
+                          },
+                          decoration: const InputDecoration(
+                            labelText: 'Hex Color',
+                            border: OutlineInputBorder(),
+                            hintText: '#2196F3',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  
                   Row(
                     children: [
                       Checkbox(
@@ -260,19 +426,30 @@ class _CategoryManagementState extends State<CategoryManagement> {
                     description: descriptionController.text,
                     displayOrder: int.tryParse(displayOrderController.text) ?? 0,
                     isActive: isActive,
+                    color: selectedColor,
+                    icon: selectedIcon,
                     updatedAt: DateTime.now(),
                   );
                   
-                  await CategoryService.updateCategory(updatedCategory);
-                  await _loadCategories();
-                  
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Category updated successfully'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
+                  try {
+                    await CategoryService.updateCategory(updatedCategory);
+                    
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Category updated successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } catch (e) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error updating category: ${e.toString()}'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
@@ -287,15 +464,29 @@ class _CategoryManagementState extends State<CategoryManagement> {
   }
   
   void _toggleCategoryStatus(ProductCategory category) async {
-    await CategoryService.toggleCategoryStatus(category.id, category.type);
-    await _loadCategories();
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Category ${category.isActive ? 'deactivated' : 'activated'}'),
-        backgroundColor: category.isActive ? Colors.orange : Colors.green,
-      ),
-    );
+    try {
+      // For toggling, we need to update the category with the opposite status
+      final updatedCategory = category.copyWith(
+        isActive: !category.isActive,
+        updatedAt: DateTime.now(),
+      );
+      
+      await CategoryService.updateCategory(updatedCategory);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Category ${category.isActive ? 'deactivated' : 'activated'}'),
+          backgroundColor: category.isActive ? Colors.orange : Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error toggling category status: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
   
   void _deleteCategory(ProductCategory category) {
@@ -303,7 +494,7 @@ class _CategoryManagementState extends State<CategoryManagement> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Category'),
-        content: Text('Are you sure you want to delete "${category.name}"? This action cannot be undone.'),
+        content: Text('Are you sure you want to delete "${category.name}"? This will soft delete the category (mark as inactive).'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -311,16 +502,25 @@ class _CategoryManagementState extends State<CategoryManagement> {
           ),
           ElevatedButton(
             onPressed: () async {
-              await CategoryService.deleteCategory(category.id, category.type);
-              await _loadCategories();
-              
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('"${category.name}" deleted successfully'),
-                  backgroundColor: Colors.red,
-                ),
-              );
+              try {
+                await CategoryService.deleteCategory(category.id);
+                
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('"${category.name}" deleted successfully'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              } catch (e) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error deleting category: ${e.toString()}'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -406,7 +606,7 @@ class _CategoryManagementState extends State<CategoryManagement> {
           const SizedBox(width: 16),
         ],
       ),
-      body: _buildContent(context, EdgeInsets.all(24), false),
+      body: _buildContent(context, const EdgeInsets.all(24), false),
     );
   }
 
@@ -512,12 +712,16 @@ class _CategoryManagementState extends State<CategoryManagement> {
                         Row(
                           children: [
                             const Text('Show Inactive:'),
-                            Checkbox(
-                              value: _showInactive,
-                              onChanged: (value) {
-                                setState(() {
-                                  _showInactive = value ?? false;
-                                });
+                            StatefulBuilder(
+                              builder: (context, setState) {
+                                return Checkbox(
+                                  value: _showInactive,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _showInactive = value ?? false;
+                                    });
+                                  },
+                                );
                               },
                             ),
                             if (isMobile) const Spacer(),
@@ -540,7 +744,7 @@ class _CategoryManagementState extends State<CategoryManagement> {
                 
                 const SizedBox(height: 16),
                 
-                // Categories List
+                // Categories List - Using StreamBuilder for real-time updates
                 Card(
                   elevation: 3,
                   child: Padding(
@@ -557,226 +761,289 @@ class _CategoryManagementState extends State<CategoryManagement> {
                         ),
                         const SizedBox(height: 16),
                         
-                        if (_isLoading)
-                          const Center(child: CircularProgressIndicator())
-                        else if (_filteredCategories.isEmpty)
-                          Container(
-                            constraints: const BoxConstraints(minHeight: 150),
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.category_outlined,
-                                    size: 60,
-                                    color: Colors.grey,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  const Text(
-                                    'No categories found',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        else if (isMobile)
-                          // Mobile List View
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _filteredCategories.length,
-                            itemBuilder: (context, index) {
-                              final category = _filteredCategories[index];
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: Colors.deepOrange.shade50,
-                                    child: Icon(
-                                      Icons.category,
-                                      color: Colors.deepOrange,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  title: Text(
-                                    category.name,
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                  subtitle: category.description.isNotEmpty
-                                      ? Text(
-                                          category.description,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        )
-                                      : null,
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
+                        StreamBuilder<List<ProductCategory>>(
+                          stream: CategoryService.getCategoriesByTypeStream(widget.categoryType),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting && 
+                                !snapshot.hasData) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            
+                            if (snapshot.hasError) {
+                              return Center(
+                                child: Text(
+                                  'Error loading categories: ${snapshot.error}',
+                                  style: const TextStyle(color: Colors.red),
+                                ),
+                              );
+                            }
+                            
+                            final categories = snapshot.data ?? [];
+                            
+                            // Filter categories based on search and inactive toggle
+                            final filteredCategories = categories.where((category) {
+                              final matchesSearch = _searchController.text.isEmpty ||
+                                  category.name.toLowerCase().contains(_searchController.text.toLowerCase()) ||
+                                  category.description.toLowerCase().contains(_searchController.text.toLowerCase());
+                              final matchesActive = _showInactive || category.isActive;
+                              
+                              return matchesSearch && matchesActive;
+                            }).toList()
+                            ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+                            
+                            if (filteredCategories.isEmpty) {
+                              return Container(
+                                constraints: const BoxConstraints(minHeight: 150),
+                                child: const Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Chip(
-                                        label: Text(
-                                          category.isActive ? 'Active' : 'Inactive',
-                                        ),
-                                        backgroundColor: category.isActive
-                                            ? Colors.green.shade100
-                                            : Colors.grey.shade200,
-                                        labelStyle: TextStyle(
-                                          color: category.isActive ? Colors.green : Colors.grey,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                                      Icon(
+                                        Icons.category_outlined,
+                                        size: 60,
+                                        color: Colors.grey,
                                       ),
-                                      PopupMenuButton<String>(
-                                        itemBuilder: (context) => [
-                                          const PopupMenuItem(
-                                            value: 'edit',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.edit, size: 18, color: Colors.blue),
-                                                SizedBox(width: 8),
-                                                Text('Edit'),
-                                              ],
-                                            ),
-                                          ),
-                                          PopupMenuItem(
-                                            value: 'toggle',
-                                            child: Row(
-                                              children: [
-                                                Icon(
-                                                  category.isActive ? Icons.toggle_off : Icons.toggle_on,
-                                                  size: 18,
-                                                  color: category.isActive ? Colors.orange : Colors.green,
-                                                ),
-                                                SizedBox(width: 8),
-                                                Text(category.isActive ? 'Deactivate' : 'Activate'),
-                                              ],
-                                            ),
-                                          ),
-                                          const PopupMenuItem(
-                                            value: 'delete',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.delete, size: 18, color: Colors.red),
-                                                SizedBox(width: 8),
-                                                Text('Delete'),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                        onSelected: (value) {
-                                          if (value == 'edit') {
-                                            _editCategory(category);
-                                          } else if (value == 'toggle') {
-                                            _toggleCategoryStatus(category);
-                                          } else if (value == 'delete') {
-                                            _deleteCategory(category);
-                                          }
-                                        },
+                                      SizedBox(height: 16),
+                                      Text(
+                                        'No categories found',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.grey,
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
                               );
-                            },
-                          )
-                        else
-                          // Desktop Table View
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: DataTable(
-                              columns: const [
-                                DataColumn(label: Text('Category')),
-                                DataColumn(label: Text('Description')),
-                                DataColumn(label: Text('Type')),
-                                DataColumn(label: Text('Display Order')),
-                                DataColumn(label: Text('Status')),
-                                DataColumn(label: Text('Actions')),
-                              ],
-                              rows: _filteredCategories.map((category) {
-                                return DataRow(
-                                  cells: [
-                                    DataCell(
-                                      Text(
+                            }
+                            
+                            if (isMobile) {
+                              return ListView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: filteredCategories.length,
+                                itemBuilder: (context, index) {
+                                  final category = filteredCategories[index];
+                                  return Card(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    child: ListTile(
+                                      leading: CircleAvatar(
+                                        backgroundColor: _parseColor(category.color),
+                                        child: Text(
+                                          category.icon.isNotEmpty 
+                                              ? category.icon[0].toUpperCase()
+                                              : category.name[0].toUpperCase(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      title: Text(
                                         category.name,
                                         style: const TextStyle(fontWeight: FontWeight.bold),
                                       ),
-                                    ),
-                                    DataCell(
-                                      SizedBox(
-                                        width: 200,
-                                        child: Text(
-                                          category.description,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Chip(
-                                        label: Text(
-                                          category.type == 'inventory' ? 'Inventory' : 'Product',
-                                        ),
-                                        backgroundColor: category.type == 'inventory' 
-                                            ? Colors.blue.shade100 
-                                            : Colors.orange.shade100,
-                                        labelStyle: TextStyle(
-                                          color: category.type == 'inventory' 
-                                              ? Colors.blue 
-                                              : Colors.orange,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(Text('${category.displayOrder}')),
-                                    DataCell(
-                                      Chip(
-                                        label: Text(
-                                          category.isActive ? 'Active' : 'Inactive',
-                                        ),
-                                        backgroundColor: category.isActive
-                                            ? Colors.green.shade100
-                                            : Colors.grey.shade200,
-                                        labelStyle: TextStyle(
-                                          color: category.isActive ? Colors.green : Colors.grey,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Row(
+                                      subtitle: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          IconButton(
-                                            icon: const Icon(Icons.edit, size: 18),
-                                            color: Colors.blue,
-                                            onPressed: () => _editCategory(category),
-                                            tooltip: 'Edit',
-                                          ),
-                                          IconButton(
-                                            icon: Icon(
-                                              category.isActive ? Icons.toggle_on : Icons.toggle_off,
-                                              size: 18,
+                                          if (category.description.isNotEmpty)
+                                            Text(
+                                              category.description,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade600,
+                                              ),
                                             ),
-                                            color: category.isActive ? Colors.green : Colors.grey,
-                                            onPressed: () => _toggleCategoryStatus(category),
-                                            tooltip: category.isActive ? 'Deactivate' : 'Activate',
+                                          if (category.icon.isNotEmpty)
+                                            Text(
+                                              'Icon: ${category.icon}',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.grey.shade500,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Chip(
+                                            label: Text(
+                                              category.isActive ? 'Active' : 'Inactive',
+                                              style: const TextStyle(fontSize: 10),
+                                            ),
+                                            backgroundColor: category.isActive
+                                                ? Colors.green.shade100
+                                                : Colors.grey.shade200,
+                                            labelStyle: TextStyle(
+                                              color: category.isActive ? Colors.green : Colors.grey,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                           ),
-                                          IconButton(
-                                            icon: const Icon(Icons.delete, size: 18),
-                                            color: Colors.red,
-                                            onPressed: () => _deleteCategory(category),
-                                            tooltip: 'Delete',
+                                          PopupMenuButton<String>(
+                                            itemBuilder: (context) => [
+                                              const PopupMenuItem(
+                                                value: 'edit',
+                                                child: Row(
+                                                  children: [
+                                                    Icon(Icons.edit, size: 18, color: Colors.blue),
+                                                    SizedBox(width: 8),
+                                                    Text('Edit'),
+                                                  ],
+                                                ),
+                                              ),
+                                              const PopupMenuItem(
+                                                value: 'toggle',
+                                                child: Row(
+                                                  children: [
+                                                    Icon(Icons.toggle_on, size: 18, color: Colors.orange),
+                                                    SizedBox(width: 8),
+                                                    Text('Toggle Status'),
+                                                  ],
+                                                ),
+                                              ),
+                                              const PopupMenuItem(
+                                                value: 'delete',
+                                                child: Row(
+                                                  children: [
+                                                    Icon(Icons.delete, size: 18, color: Colors.red),
+                                                    SizedBox(width: 8),
+                                                    Text('Delete'),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                            onSelected: (value) {
+                                              if (value == 'edit') {
+                                                _editCategory(category);
+                                              } else if (value == 'toggle') {
+                                                _toggleCategoryStatus(category);
+                                              } else if (value == 'delete') {
+                                                _deleteCategory(category);
+                                              }
+                                            },
                                           ),
                                         ],
                                       ),
                                     ),
+                                  );
+                                },
+                              );
+                            } else {
+                              // Desktop Table View
+                              return SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: DataTable(
+                                  columnSpacing: 20,
+                                  columns: const [
+                                    DataColumn(label: Text('Category')),
+                                    DataColumn(label: Text('Description')),
+                                    DataColumn(label: Text('Icon')),
+                                    DataColumn(label: Text('Display Order')),
+                                    DataColumn(label: Text('Status')),
+                                    DataColumn(label: Text('Actions')),
                                   ],
-                                );
-                              }).toList(),
-                            ),
-                          ),
+                                  rows: filteredCategories.map((category) {
+                                    return DataRow(
+                                      cells: [
+                                        DataCell(
+                                          Row(
+                                            children: [
+                                              Container(
+                                                width: 24,
+                                                height: 24,
+                                                margin: const EdgeInsets.only(right: 8),
+                                                decoration: BoxDecoration(
+                                                  color: _parseColor(category.color),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  border: Border.all(color: Colors.grey.shade300),
+                                                ),
+                                                child: Center(
+                                                  child: Text(
+                                                    category.icon.isNotEmpty 
+                                                        ? category.icon[0].toUpperCase()
+                                                        : category.name[0].toUpperCase(),
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              Text(
+                                                category.name,
+                                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        DataCell(
+                                          SizedBox(
+                                            width: 200,
+                                            child: Text(
+                                              category.description,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ),
+                                        DataCell(
+                                          Text(category.icon.isNotEmpty ? category.icon : '-'),
+                                        ),
+                                        DataCell(Text('${category.displayOrder}')),
+                                        DataCell(
+                                          Chip(
+                                            label: Text(
+                                              category.isActive ? 'Active' : 'Inactive',
+                                            ),
+                                            backgroundColor: category.isActive
+                                                ? Colors.green.shade100
+                                                : Colors.grey.shade200,
+                                            labelStyle: TextStyle(
+                                              color: category.isActive ? Colors.green : Colors.grey,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                        DataCell(
+                                          Row(
+                                            children: [
+                                              IconButton(
+                                                icon: const Icon(Icons.edit, size: 18),
+                                                color: Colors.blue,
+                                                onPressed: () => _editCategory(category),
+                                                tooltip: 'Edit',
+                                              ),
+                                              IconButton(
+                                                icon: Icon(
+                                                  category.isActive ? Icons.toggle_on : Icons.toggle_off,
+                                                  size: 18,
+                                                ),
+                                                color: category.isActive ? Colors.green : Colors.orange,
+                                                onPressed: () => _toggleCategoryStatus(category),
+                                                tooltip: category.isActive ? 'Deactivate' : 'Activate',
+                                              ),
+                                              IconButton(
+                                                icon: const Icon(Icons.delete, size: 18),
+                                                color: Colors.red,
+                                                onPressed: () => _deleteCategory(category),
+                                                tooltip: 'Delete',
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }).toList(),
+                                ),
+                              );
+                            }
+                          },
+                        ),
                       ],
                     ),
                   ),

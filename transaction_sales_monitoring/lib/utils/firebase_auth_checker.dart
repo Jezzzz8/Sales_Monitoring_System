@@ -8,11 +8,13 @@ class FirebaseAuthChecker {
     
     try {
       // Check if Firebase Auth is accessible
+      // ignore: unnecessary_null_comparison
       results['firebaseAccessible'] = FirebaseAuthService.isAuthenticated() != null;
       
       // Test email checking
       const testEmail = 'test@example.com';
       final emailCheck = await FirebaseAuthService.checkIfEmailExists(testEmail);
+      // ignore: unnecessary_null_comparison
       results['emailCheckWorks'] = emailCheck != null; // Should return false for non-existent email
       
       // Test current user

@@ -610,7 +610,7 @@ class OwnerDashboardHome extends StatelessWidget {
     final theme = ThemeProvider.of(context);
     
     return Container(
-      constraints: BoxConstraints(
+      constraints: const BoxConstraints(
         minHeight: 100,
         maxHeight: 120,
       ),
@@ -660,7 +660,7 @@ class OwnerDashboardHome extends StatelessWidget {
     final theme = ThemeProvider.of(context);
     
     final cardContent = Container(
-      constraints: BoxConstraints(
+      constraints: const BoxConstraints(
         minHeight: 80,
         maxHeight: 100,
       ),

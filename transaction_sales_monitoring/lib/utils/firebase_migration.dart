@@ -66,7 +66,7 @@ class FirebaseMigration {
       if (users.isEmpty) {
         print('Creating default admin user...');
         
-        final defaultPassword = 'admin123';
+        const defaultPassword = 'admin123';
         final hashedPassword = hashPassword(defaultPassword);
         
         final defaultUser = User(

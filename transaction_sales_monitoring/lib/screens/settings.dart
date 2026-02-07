@@ -92,10 +92,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Settings saved successfully'),
+        const SnackBar(
+          content: Text('Settings saved successfully'),
           backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
+          duration: Duration(seconds: 2),
         ),
       );
       
@@ -699,10 +699,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: Colors.green.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Row(
+                    child: const Row(
                       children: [
                         Icon(Icons.bolt, color: Colors.green, size: 16),
-                        const SizedBox(width: 4),
+                        SizedBox(width: 4),
                         Text(
                           'INSTANT',
                           style: TextStyle(
@@ -1144,10 +1144,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Row(
+                child: const Row(
                   children: [
                     Icon(Icons.bolt, color: Colors.blue, size: 16),
-                    const SizedBox(width: 4),
+                    SizedBox(width: 4),
                     Text(
                       'INSTANT',
                       style: TextStyle(
@@ -1415,9 +1415,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           value: value,
           activeColor: theme.primaryColor,
           inactiveTrackColor: theme.isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-          thumbColor: MaterialStateProperty.resolveWith<Color>(
-            (Set<MaterialState> states) {
-              if (states.contains(MaterialState.selected)) {
+          thumbColor: WidgetStateProperty.resolveWith<Color>(
+            (Set<WidgetState> states) {
+              if (states.contains(WidgetState.selected)) {
                 return Colors.white;
               }
               return theme.isDarkMode ? Colors.grey.shade300 : Colors.grey.shade50;

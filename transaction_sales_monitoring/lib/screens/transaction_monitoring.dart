@@ -14,7 +14,9 @@ class TransactionMonitoring extends StatefulWidget {
 
 class _TransactionMonitoringState extends State<TransactionMonitoring> with SettingsMixin {
   // Settings integration
+  // ignore: unused_field
   AppSettings? _settings;
+  // ignore: unused_field
   bool _isLoadingSettings = true;
   
   final List<TransactionModel> _transactions = [
@@ -155,6 +157,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
   final TextEditingController _searchController = TextEditingController();
 
 
+  // ignore: unused_element
   Future<void> _loadSettings() async {
     setState(() => _isLoadingSettings = true);
     try {
@@ -185,6 +188,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
         .fold(0, (sum, t) => sum + t.totalAmount);
   }
 
+  // ignore: unused_element
   int get _weeklyTransactions {
     final weekAgo = DateTime.now().subtract(const Duration(days: 7));
     return _transactions
@@ -607,7 +611,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
 
                   // UPDATED: Transactions List Card with theme
                   Container(
-                    constraints: BoxConstraints(
+                    constraints: const BoxConstraints(
                       minHeight: 200,
                     ),
                     child: Card(
@@ -675,7 +679,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                             const SizedBox(height: 16),
                             _filteredTransactions.isEmpty
                                 ? Container(
-                                    constraints: BoxConstraints(
+                                    constraints: const BoxConstraints(
                                       minHeight: 150,
                                     ),
                                     child: Center(
@@ -750,7 +754,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
     final isMobile = Responsive.isMobile(context);
     
     return Container(
-      constraints: BoxConstraints(
+      constraints: const BoxConstraints(
         minHeight: 150,
       ),
       child: Card(
@@ -817,7 +821,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
               Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Container(
+                  SizedBox(
                     width: double.infinity,
                     child: Text(
                       'TRANSACTION STATS',
@@ -1066,7 +1070,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                   Row(
                     children: [
                       IconButton(
-                        icon: Icon(Icons.receipt, size: 20),
+                        icon: const Icon(Icons.receipt, size: 20),
                         color: primaryColor,
                         onPressed: () {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1080,7 +1084,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                       ),
                       if (transaction.status == 'Pending')
                         IconButton(
-                          icon: Icon(Icons.check_circle, size: 20),
+                          icon: const Icon(Icons.check_circle, size: 20),
                           color: Colors.green,
                           onPressed: () {
                             setState(() {

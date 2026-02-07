@@ -17,129 +17,11 @@ class POSTransaction extends StatefulWidget {
 class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   // Settings integration
   AppSettings? _settings;
+  // ignore: unused_field
   bool _isLoadingSettings = true;
   
   final List<Product> _products = [
-    Product(
-      id: '1',
-      name: 'Whole Lechon (18-20kg)',
-      categoryId: '5',
-      description: 'Traditional roasted pig, serves 30-40 persons',
-      price: 6000,
-      unit: 'piece',
-      stock: 5,
-      createdAt: DateTime.now(),
-    ),
-    Product(
-      id: '2',
-      name: 'Whole Lechon (21-23kg)',
-      categoryId: '5',
-      description: 'Traditional roasted pig, serves 40-50 persons',
-      price: 7000,
-      unit: 'piece',
-      stock: 3,
-      createdAt: DateTime.now(),
-    ),
-    Product(
-      id: '3',
-      name: 'Lechon Belly (3kg)',
-      categoryId: '6',
-      description: 'Boneless lechon belly, serves 8-10 persons',
-      price: 1800,
-      unit: 'piece',
-      stock: 10,
-      createdAt: DateTime.now(),
-    ),
-    Product(
-      id: '4',
-      name: 'Lechon Belly (5kg)',
-      categoryId: '6',
-      description: 'Boneless lechon belly, serves 12-15 persons',
-      price: 2700,
-      unit: 'piece',
-      stock: 8,
-      createdAt: DateTime.now(),
-    ),
-    Product(
-      id: '5',
-      name: 'Pork BBQ (10 sticks)',
-      categoryId: '7',
-      description: 'Grilled pork barbecue sticks',
-      price: 400,
-      unit: 'pack',
-      stock: 20,
-      createdAt: DateTime.now(),
-    ),
-    Product(
-      id: '6',
-      name: 'Dinakdakan',
-      categoryId: '7',
-      description: 'Pork appetizer with special sauce',
-      price: 1200,
-      unit: 'tray',
-      stock: 6,
-      createdAt: DateTime.now(),
-    ),
-    Product(
-      id: '7',
-      name: 'Chicken BBQ (10 sticks)',
-      categoryId: '7',
-      description: 'Grilled chicken barbecue sticks',
-      price: 350,
-      unit: 'pack',
-      stock: 15,
-      createdAt: DateTime.now(),
-    ),
-    Product(
-      id: '8',
-      name: 'Sisig (Family Size)',
-      categoryId: '7',
-      description: 'Sizzling pork sisig',
-      price: 450,
-      unit: 'plate',
-      stock: 12,
-      createdAt: DateTime.now(),
-    ),
-    Product(
-      id: '9',
-      name: 'Leche Flan',
-      categoryId: '8',
-      description: 'Creamy caramel flan',
-      price: 250,
-      unit: 'slice',
-      stock: 15,
-      createdAt: DateTime.now(),
-    ),
-    Product(
-      id: '10',
-      name: 'Halo-Halo',
-      categoryId: '8',
-      description: 'Mixed dessert with shaved ice',
-      price: 120,
-      unit: 'bowl',
-      stock: 20,
-      createdAt: DateTime.now(),
-    ),
-    Product(
-      id: '11',
-      name: 'Carbonara Pasta',
-      categoryId: '9',
-      description: 'Creamy carbonara pasta',
-      price: 300,
-      unit: 'plate',
-      stock: 12,
-      createdAt: DateTime.now(),
-    ),
-    Product(
-      id: '12',
-      name: 'Spaghetti',
-      categoryId: '9',
-      description: 'Sweet Filipino-style spaghetti',
-      price: 280,
-      unit: 'plate',
-      stock: 15,
-      createdAt: DateTime.now(),
-    ),
+    
   ];
 
   final List<TransactionItem> _cartItems = [];
@@ -152,6 +34,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   bool _showCustomerForm = true;
 
 
+  // ignore: unused_element
   Future<void> _loadSettings() async {
     setState(() => _isLoadingSettings = true);
     try {
@@ -327,7 +210,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                 const SnackBar(
                   content: Text('Cart cleared successfully'),
                   backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 2),
+                  duration: Duration(seconds: 2),
                 ),
               );
             },
@@ -689,7 +572,7 @@ double _getCardAspectRatio(BuildContext context) {
                               ),
                               child: Text(
                                 '${product.stock}',
-                                style: TextStyle(
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
@@ -970,7 +853,7 @@ double _getCardAspectRatio(BuildContext context) {
                       ),
                     ),
                     Text( // ADDED: Show total items count
-                      '${_totalItemCount} items',
+                      '$_totalItemCount items',
                       style: TextStyle(
                         color: isDarkMode ? Colors.white.withOpacity(0.8) : Colors.white.withOpacity(0.9),
                         fontSize: 11,
@@ -1218,7 +1101,7 @@ Widget _buildDesktopLayout(
                   ],
                 ),
                 Badge(
-                  label: Text('${_totalItemCount}', // CHANGED: Use totalItemCount
+                  label: Text('$_totalItemCount', // CHANGED: Use totalItemCount
                     style: TextStyle(
                       color: isDarkMode ? Colors.white : primaryColor,
                     ),
@@ -1942,7 +1825,7 @@ Widget _buildDesktopLayout(
                             label: const Text('CLEAR CART'),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 12),
-                              side: BorderSide(color: Colors.red),
+                              side: const BorderSide(color: Colors.red),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),

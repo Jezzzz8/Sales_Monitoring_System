@@ -9,6 +9,7 @@ import 'firebase_auth_service.dart';
 class UserService {
   static final CollectionReference<Map<String, dynamic>> _usersCollection =
       FirebaseConfig.usersCollection;
+  // ignore: unused_field
   static final firebase_auth.FirebaseAuth _firebaseAuth = FirebaseConfig.auth;
 
   // Safe helper to convert dynamic firestore data to DateTime
@@ -45,6 +46,7 @@ class UserService {
   }
 
   // Convert User model to Firebase document
+  // ignore: unused_element
   static Map<String, dynamic> _userToMap(User user) {
     return {
       'username': user.username,

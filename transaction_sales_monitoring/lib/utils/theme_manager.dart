@@ -367,6 +367,7 @@ class ThemeManager {
       case ThemeMode.light:
         return lightTheme(colorName);
       case ThemeMode.system:
+      // ignore: unreachable_switch_default
       default:
         // Return light theme by default, but you could check system preference
         return lightTheme(colorName);

@@ -15,6 +15,7 @@ import 'screens/owner_dashboard.dart';
 import 'screens/cashier_dashboard.dart';
 import 'screens/staff_dashboard.dart';
 import 'screens/settings.dart';
+import 'services/database_init_service.dart';
 import 'services/settings_service.dart';
 import 'models/settings_model.dart';
 import 'utils/theme_manager.dart';
@@ -50,6 +51,7 @@ class GenesLechonSystemApp extends StatefulWidget {
 
 class _GenesLechonSystemAppState extends State<GenesLechonSystemApp> {
   AppSettings? _currentSettings;
+  // ignore: unused_field
   bool _hasInternet = true;
   bool _checkingInternet = true;
   bool _showNoInternetDialog = false;
@@ -64,10 +66,13 @@ class _GenesLechonSystemAppState extends State<GenesLechonSystemApp> {
     
     _initializeApp();
   }
-  
+
   Future<void> _initializeApp() async {
     await _loadSettings();
-    _checkInternetConnection(); 
+    _checkInternetConnection();
+    
+    // Initialize database with sample data if needed
+    await DatabaseInitService.initializeDatabase();
     
     if (mounted) {
       setState(() {

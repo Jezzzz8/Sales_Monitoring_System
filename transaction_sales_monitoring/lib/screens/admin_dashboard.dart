@@ -684,6 +684,7 @@ class AdminDashboardHome extends StatelessWidget {
                       Icons.inventory, Colors.deepOrange, context,
                       onTap: () {
                         final state = context.findAncestorStateOfType<_AdminDashboardState>();
+                        // ignore: invalid_use_of_protected_member
                         state?.setState(() {
                           state._selectedIndex = 4;
                           state._selectedScreen = 'Inventory Monitoring';
@@ -695,6 +696,7 @@ class AdminDashboardHome extends StatelessWidget {
                       Icons.restaurant_menu, Colors.blue, context,
                       onTap: () {
                         final state = context.findAncestorStateOfType<_AdminDashboardState>();
+                        // ignore: invalid_use_of_protected_member
                         state?.setState(() {
                           state._selectedIndex = 5;
                           state._selectedScreen = 'Product Management';
@@ -716,7 +718,7 @@ class AdminDashboardHome extends StatelessWidget {
                       Icons.analytics, Colors.teal, context,
                       onTap: () => ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Reports feature coming soon'),
+                          content: const Text('Reports feature coming soon'),
                           backgroundColor: primaryColor,
                         ),
                       ),

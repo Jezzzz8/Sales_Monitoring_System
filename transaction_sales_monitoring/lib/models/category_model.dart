@@ -1,3 +1,6 @@
+// lib/models/category_model.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class ProductCategory {
   final String id;
   final String name;
@@ -5,6 +8,8 @@ class ProductCategory {
   final String type; // "inventory" or "product"
   final int displayOrder;
   final bool isActive;
+  final String color;
+  final String icon;
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -15,34 +20,50 @@ class ProductCategory {
     required this.type,
     this.displayOrder = 0,
     this.isActive = true,
+    this.color = '#2196F3',
+    this.icon = '',
     required this.createdAt,
     this.updatedAt,
   });
   
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
       'name': name,
       'description': description,
       'type': type,
       'displayOrder': displayOrder,
-      'isActive': isActive,
-      'createdAt': createdAt.toIso8601String(),
-      'updatedAt': updatedAt?.toIso8601String(),
+      'active': isActive,
+      'color': color,
+      'icon': icon,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
     };
   }
 
-  factory ProductCategory.fromMap(Map<String, dynamic> map) {
+  factory ProductCategory.fromMap(Map<String, dynamic> map, String id) {
     return ProductCategory(
-      id: map['id'],
-      name: map['name'],
+      id: id,
+      name: map['name'] ?? '',
       description: map['description'] ?? '',
-      type: map['type'],
-      displayOrder: map['displayOrder'] ?? 0,
-      isActive: map['isActive'] ?? true,
-      createdAt: DateTime.parse(map['createdAt']),
-      updatedAt: map['updatedAt'] != null ? DateTime.parse(map['updatedAt']) : null,
+      type: map['type'] ?? 'product',
+      displayOrder: map['displayOrder']?.toInt() ?? 0,
+      isActive: map['active'] ?? true,
+      color: map['color'] ?? '#2196F3',
+      icon: map['icon'] ?? '',
+      createdAt: map['createdAt'] is Timestamp 
+          ? (map['createdAt'] as Timestamp).toDate()
+          : DateTime.parse(map['createdAt'] ?? DateTime.now().toIso8601String()),
+      updatedAt: map['updatedAt'] != null
+          ? (map['updatedAt'] is Timestamp 
+              ? (map['updatedAt'] as Timestamp).toDate()
+              : DateTime.parse(map['updatedAt']))
+          : null,
     );
+  }
+
+  factory ProductCategory.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return ProductCategory.fromMap(data, doc.id);
   }
 
   ProductCategory copyWith({
@@ -52,6 +73,8 @@ class ProductCategory {
     String? type,
     int? displayOrder,
     bool? isActive,
+    String? color,
+    String? icon,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -62,8 +85,26 @@ class ProductCategory {
       type: type ?? this.type,
       displayOrder: displayOrder ?? this.displayOrder,
       isActive: isActive ?? this.isActive,
+      color: color ?? this.color,
+      icon: icon ?? this.icon,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
     );
+  }
+  
+  Map<String, dynamic> toFirestore() {
+    return {
+      'name': name,
+      'description': description,
+      'type': type,
+      'displayOrder': displayOrder,
+      'active': isActive,
+      'color': color,
+      'icon': icon,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': updatedAt != null 
+          ? Timestamp.fromDate(updatedAt!) 
+          : FieldValue.serverTimestamp(),
+    };
   }
 }
