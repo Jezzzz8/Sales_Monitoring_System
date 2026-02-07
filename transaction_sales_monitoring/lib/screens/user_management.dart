@@ -1973,7 +1973,7 @@ class _UserManagementState extends State<UserManagement> {
                         onPressed: () => _toggleUserStatus(user.id),
                         tooltip: user.isActive ? 'Deactivate' : 'Activate',
                       ),
-                      if (user.role != app_user.UserRole.owner)
+                      if (user.role != app_user.UserRole.admin)
                         IconButton(
                           icon: Icon(
                             Icons.delete,

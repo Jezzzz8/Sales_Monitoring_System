@@ -55,6 +55,23 @@ class CategoryService {
     }
   }
 
+  static Future<List<ProductCategory>> getProductCategories() async {
+  try {
+    final snapshot = await categoriesCollection
+        .where('type', isEqualTo: 'product')
+        .orderBy('name')
+        .get();
+    
+    return snapshot.docs
+        .map((doc) => ProductCategory.fromFirestore(doc))
+        .where((category) => category.isActive)
+        .toList();
+  } catch (e) {
+    print('Error getting product categories: $e');
+    return [];
+  }
+}
+
   // Update category
   static Future<void> updateCategory(ProductCategory category) async {
     try {

@@ -2,10 +2,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:provider/provider.dart';
 import '../models/category_model.dart';
 import '../models/product.dart';
 import '../services/product_service.dart';
@@ -27,9 +25,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
   String _selectedCategory = 'All';
   bool _showInactive = false;
   bool _showFilters = false;
-  bool _loadingCategories = false;
   XFile? _selectedImage;
-  String? _image;
   bool _isUploadingImage = false;
   bool _isLoading = false;
   bool _isInitialLoad = true;

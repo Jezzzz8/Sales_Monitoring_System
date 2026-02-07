@@ -1,3 +1,4 @@
+// lib/models/transaction.dart - UPDATED VERSION
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class TransactionModel {
@@ -16,14 +17,6 @@ class TransactionModel {
   DateTime createdAt;
   String cashier;
   String? reference;
-
-  // New fields to match Firebase
-  String get customer => customerName;
-  String get contact => customerPhone;
-  double get cashReceived => amountPaid;
-  String get orderId => transactionNumber;
-  String get method => paymentMethod;
-  double get total => totalAmount;
 
   TransactionModel({
     required this.id,
@@ -87,7 +80,7 @@ class TransactionModel {
   factory TransactionModel.fromMap(Map<String, dynamic> map) {
     return TransactionModel(
       id: map['id'] ?? '',
-      transactionNumber: map['transactionNumber'] ?? map['orderId'] ?? '',
+      transactionNumber: map['transactionNumber'] ?? map['orderId'] ?? '#N/A',
       transactionDate: map['transactionDate'] != null 
           ? DateTime.parse(map['transactionDate'])
           : (map['date'] is Timestamp 
@@ -101,11 +94,13 @@ class TransactionModel {
       change: (map['change'] ?? 0).toDouble(),
       status: map['status'] ?? 'Completed',
       items: List<TransactionItem>.from(
-        (map['items'] ?? []).map((x) => TransactionItem.fromMap(x)),
+        (map['items'] as List<dynamic>? ?? []).map((x) => TransactionItem.fromMap(x)),
       ),
       notes: map['notes'],
       createdAt: map['createdAt'] != null 
-          ? DateTime.parse(map['createdAt'])
+          ? (map['createdAt'] is Timestamp 
+              ? (map['createdAt'] as Timestamp).toDate()
+              : DateTime.parse(map['createdAt']))
           : DateTime.now(),
       cashier: map['cashier'] ?? 'Staff',
       reference: map['reference'] ?? '-',
@@ -114,17 +109,31 @@ class TransactionModel {
 
   factory TransactionModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
-    return TransactionModel.fromMap({
-      ...data,
-      'id': doc.id,
-      'date': data['date'],
-      'cashReceived': data['cashReceived'],
-      'contact': data['contact'],
-      'customer': data['customer'],
-      'orderId': data['orderId'],
-      'method': data['method'],
-      'total': data['total'],
-    });
+    
+    // Debug log to see what fields are available
+    print('Firestore Document ID: ${doc.id}');
+    print('Firestore Data: $data');
+    print('Fields present: ${data.keys.toList()}');
+    
+    return TransactionModel(
+      id: doc.id,
+      transactionNumber: data['orderId'] ?? '#N/A',
+      transactionDate: (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      customerName: data['customer'] ?? 'Walk-in',
+      customerPhone: data['contact'] ?? '-',
+      paymentMethod: data['method'] ?? 'Cash',
+      totalAmount: (data['total'] ?? 0).toDouble(),
+      amountPaid: (data['cashReceived'] ?? 0).toDouble(),
+      change: (data['change'] ?? 0).toDouble(),
+      status: data['status'] ?? 'Completed',
+      items: List<TransactionItem>.from(
+        (data['items'] as List<dynamic>? ?? []).map((x) => TransactionItem.fromMap(x as Map<String, dynamic>)),
+      ),
+      notes: data['notes'],
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      cashier: data['cashier'] ?? 'Staff',
+      reference: data['reference'] ?? '-',
+    );
   }
 
   TransactionModel copyWith({
@@ -165,6 +174,9 @@ class TransactionModel {
 
   String get formattedDate => '${transactionDate.day}/${transactionDate.month}/${transactionDate.year}';
   String get formattedTime => '${transactionDate.hour.toString().padLeft(2, '0')}:${transactionDate.minute.toString().padLeft(2, '0')}';
+  
+  // Helper method to get display name
+  String get displayTransactionNumber => transactionNumber.startsWith('#') ? transactionNumber : '#$transactionNumber';
 }
 
 class TransactionItem {
@@ -184,10 +196,10 @@ class TransactionItem {
 
   Map<String, dynamic> toMap() {
     return {
-      'productId': productId,
-      'productName': productName,
-      'quantity': quantity,
-      'unitPrice': unitPrice,
+      'id': productId,
+      'name': productName,
+      'qty': quantity,
+      'price': unitPrice,
       'total': total,
     };
   }
@@ -204,11 +216,14 @@ class TransactionItem {
   }
 
   factory TransactionItem.fromMap(Map<String, dynamic> map) {
+    // Debug log for item mapping
+    print('TransactionItem map: $map');
+    
     return TransactionItem(
-      productId: map['productId'] ?? map['id'] ?? '',
-      productName: map['productName'] ?? map['name'] ?? '',
-      quantity: (map['quantity'] ?? map['qty'] ?? 0).toInt(),
-      unitPrice: (map['unitPrice'] ?? map['price'] ?? 0).toDouble(),
+      productId: map['id']?.toString() ?? '',
+      productName: map['name']?.toString() ?? 'Unknown Product',
+      quantity: (map['qty'] ?? map['quantity'] ?? 0).toInt(),
+      unitPrice: (map['price'] ?? map['unitPrice'] ?? 0).toDouble(),
       total: (map['total'] ?? 0).toDouble(),
     );
   }

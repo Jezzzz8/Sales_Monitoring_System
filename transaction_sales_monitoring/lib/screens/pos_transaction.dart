@@ -1,6 +1,5 @@
 // pos_transaction.dart - UPDATED with complete fixes
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/settings_mixin.dart';
 import '../models/product.dart';
 import '../models/transaction.dart';
@@ -36,7 +35,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   String _paymentMethod = 'Cash';
   double _amountPaid = 0;
   bool _showCustomerForm = true;
-  bool _isProcessingTransaction = false;
 
   @override
   void initState() {
@@ -296,7 +294,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
     }
 
     setState(() {
-      _isProcessingTransaction = true;
     });
 
     try {
@@ -347,7 +344,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       );
     } finally {
       setState(() {
-        _isProcessingTransaction = false;
       });
     }
   }

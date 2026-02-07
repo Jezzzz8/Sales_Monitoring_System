@@ -1,9 +1,9 @@
+// lib/screens/inventory_monitoring.dart - UPDATED VERSION
 import 'package:flutter/material.dart';
 import '../utils/settings_mixin.dart';
 import '../models/transaction.dart';
 import '../utils/responsive.dart';
-import '../services/settings_service.dart';
-import '../models/settings_model.dart';
+import '../services/transaction_service.dart';
 
 class TransactionMonitoring extends StatefulWidget {
   const TransactionMonitoring({super.key});
@@ -14,178 +14,121 @@ class TransactionMonitoring extends StatefulWidget {
 
 class _TransactionMonitoringState extends State<TransactionMonitoring> with SettingsMixin {
   // Settings integration
-  // ignore: unused_field
-  AppSettings? _settings;
-  // ignore: unused_field
   bool _isLoadingSettings = true;
   
-  final List<TransactionModel> _transactions = [
-    TransactionModel(
-      id: '1',
-      transactionNumber: 'TRX-001',
-      transactionDate: DateTime.now().subtract(const Duration(hours: 2)),
-      customerName: 'Juan Dela Cruz',
-      customerPhone: '09171234567',
-      paymentMethod: 'Cash',
-      totalAmount: 2700,
-      amountPaid: 3000,
-      change: 300,
-      status: 'Completed',
-      items: [
-        TransactionItem(
-          productId: '3',
-          productName: 'Lechon Belly (3kls)',
-          quantity: 1,
-          unitPrice: 2700,
-          total: 2700,
-        ),
-      ],
-      notes: 'For pickup at 5 PM',
-      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-    ),
-    TransactionModel(
-      id: '2',
-      transactionNumber: 'TRX-002',
-      transactionDate: DateTime.now().subtract(const Duration(hours: 4)),
-      customerName: 'Maria Santos',
-      customerPhone: '09172345678',
-      paymentMethod: 'GCash',
-      totalAmount: 8000,
-      amountPaid: 8000,
-      change: 0,
-      status: 'Completed',
-      items: [
-        TransactionItem(
-          productId: '2',
-          productName: 'Whole Lechon (21-23kls)',
-          quantity: 1,
-          unitPrice: 8000,
-          total: 8000,
-        ),
-      ],
-      notes: 'Birthday celebration',
-      createdAt: DateTime.now().subtract(const Duration(hours: 4)),
-    ),
-    TransactionModel(
-      id: '3',
-      transactionNumber: 'TRX-003',
-      transactionDate: DateTime.now().subtract(const Duration(days: 1)),
-      customerName: 'Pedro Gomez',
-      customerPhone: '09173456789',
-      paymentMethod: 'Cash',
-      totalAmount: 1400,
-      amountPaid: 1500,
-      change: 100,
-      status: 'Completed',
-      items: [
-        TransactionItem(
-          productId: '5',
-          productName: 'Pork BBQ (10 sticks)',
-          quantity: 1,
-          unitPrice: 400,
-          total: 400,
-        ),
-        TransactionItem(
-          productId: '6',
-          productName: 'Dinakdakan',
-          quantity: 1,
-          unitPrice: 1000,
-          total: 1000,
-        ),
-      ],
-      notes: 'Family gathering',
-      createdAt: DateTime.now().subtract(const Duration(days: 1)),
-    ),
-    TransactionModel(
-      id: '4',
-      transactionNumber: 'TRX-004',
-      transactionDate: DateTime.now().subtract(const Duration(days: 2)),
-      customerName: 'Ana Reyes',
-      customerPhone: '09174567890',
-      paymentMethod: 'Bank Transfer',
-      totalAmount: 4500,
-      amountPaid: 4500,
-      change: 0,
-      status: 'Completed',
-      items: [
-        TransactionItem(
-          productId: '4',
-          productName: 'Lechon Belly (3kg)',
-          quantity: 2,
-          unitPrice: 1800,
-          total: 3600,
-        ),
-        TransactionItem(
-          productId: '7',
-          productName: 'Pork BBQ (10 sticks)',
-          quantity: 1,
-          unitPrice: 400,
-          total: 400,
-        ),
-      ],
-      notes: 'Office party',
-      createdAt: DateTime.now().subtract(const Duration(days: 2)),
-    ),
-    TransactionModel(
-      id: '5',
-      transactionNumber: 'TRX-005',
-      transactionDate: DateTime.now().subtract(const Duration(days: 3)),
-      customerName: 'Carlos Lim',
-      customerPhone: '09175678901',
-      paymentMethod: 'GCash',
-      totalAmount: 12000,
-      amountPaid: 12000,
-      change: 0,
-      status: 'Pending',
-      items: [
-        TransactionItem(
-          productId: '1',
-          productName: 'Whole Lechon (18-20kg)',
-          quantity: 2,
-          unitPrice: 6000,
-          total: 12000,
-        ),
-      ],
-      notes: 'Wedding reception',
-      createdAt: DateTime.now().subtract(const Duration(days: 3)),
-    ),
-  ];
-
+  // Firebase data
+  Stream<List<TransactionModel>>? _transactionsStream;
+  List<TransactionModel> _transactions = [];
+  bool _isLoadingTransactions = true;
+  bool _isInitialLoad = true;
+  
+  // Filter states
   DateTime _selectedDate = DateTime.now();
   String _selectedStatus = 'All';
   String _selectedPaymentMethod = 'All';
   final TextEditingController _searchController = TextEditingController();
 
+  // Sales statistics
+  Map<String, dynamic> _salesStats = {};
+  bool _isLoadingStats = true;
 
-  // ignore: unused_element
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+    _loadTransactions();
+    _loadSalesStatistics();
+    
+    // Initial data load with delay to show skeleton
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        setState(() {
+          _isInitialLoad = false;
+        });
+      }
+    });
+  }
+
   Future<void> _loadSettings() async {
     setState(() => _isLoadingSettings = true);
     try {
-      _settings = await SettingsService.loadSettings();
     } catch (e) {
       print('Error loading settings in transactions: $e');
-      _settings = AppSettings();
     }
     setState(() => _isLoadingSettings = false);
   }
 
+  Future<void> _loadTransactions() async {
+    setState(() => _isLoadingTransactions = true);
+    try {
+      _transactionsStream = TransactionService.getTransactionsStream();
+      // Listen to the stream and update local list
+      _transactionsStream?.listen((transactions) {
+        if (mounted) {
+          print('Received ${transactions.length} transactions from Firebase');
+          if (transactions.isNotEmpty) {
+            print('First transaction: ${transactions.first.transactionNumber}');
+            print('Customer: ${transactions.first.customerName}');
+            print('Total: ${transactions.first.totalAmount}');
+            print('Items: ${transactions.first.items.length}');
+          }
+          
+          setState(() {
+            _transactions = transactions;
+            _isLoadingTransactions = false;
+          });
+        }
+      }, onError: (error) {
+        print('Error in transactions stream: $error');
+        setState(() => _isLoadingTransactions = false);
+      });
+    } catch (e) {
+      print('Error loading transactions: $e');
+      setState(() => _isLoadingTransactions = false);
+    }
+  }
+
+  Future<void> _loadSalesStatistics() async {
+    setState(() => _isLoadingStats = true);
+    try {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day, 0, 0, 0);
+      final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+      
+      _salesStats = await TransactionService.getDailySummary(now);
+      setState(() => _isLoadingStats = false);
+    } catch (e) {
+      print('Error loading sales statistics: $e');
+      setState(() {
+        _salesStats = {
+          'totalSales': 0.0,
+          'totalTransactions': 0,
+          'averageSale': 0.0,
+          'topProducts': [],
+          'paymentMethods': {},
+        };
+        _isLoadingStats = false;
+      });
+    }
+  }
+
+  // Calculate statistics from local data
   double get _todaySales {
-    return _transactions
-        .where((t) => t.transactionDate.day == DateTime.now().day)
-        .fold(0, (sum, t) => sum + t.totalAmount);
+    if (_isLoadingStats) return 0.0;
+    return _salesStats['totalSales'] as double? ?? 0.0;
   }
 
   int get _todayTransactions {
-    return _transactions
-        .where((t) => t.transactionDate.day == DateTime.now().day)
-        .length;
+    if (_isLoadingStats) return 0;
+    return _salesStats['totalTransactions'] as int? ?? 0;
   }
 
   double get _weeklySales {
+    // Calculate weekly sales from transactions
     final weekAgo = DateTime.now().subtract(const Duration(days: 7));
     return _transactions
         .where((t) => t.transactionDate.isAfter(weekAgo))
-        .fold(0, (sum, t) => sum + t.totalAmount);
+        .fold(0.0, (sum, t) => sum + t.totalAmount);
   }
 
   // ignore: unused_element
@@ -204,21 +147,56 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
 
   List<TransactionModel> get _filteredTransactions {
     return _transactions.where((transaction) {
-      final matchesDate = transaction.transactionDate.day == _selectedDate.day;
+      final matchesDate = transaction.transactionDate.day == _selectedDate.day &&
+                         transaction.transactionDate.month == _selectedDate.month &&
+                         transaction.transactionDate.year == _selectedDate.year;
       final matchesStatus = _selectedStatus == 'All' || transaction.status == _selectedStatus;
       final matchesPaymentMethod = _selectedPaymentMethod == 'All' || transaction.paymentMethod == _selectedPaymentMethod;
       final matchesSearch = _searchController.text.isEmpty ||
           transaction.customerName.toLowerCase().contains(_searchController.text.toLowerCase()) ||
-          transaction.transactionNumber.contains(_searchController.text);
+          transaction.transactionNumber.toLowerCase().contains(_searchController.text.toLowerCase());
       
       return matchesDate && matchesStatus && matchesPaymentMethod && matchesSearch;
     }).toList();
   }
 
+  Future<void> _markAsComplete(TransactionModel transaction) async {
+    try {
+      final result = await TransactionService.updateTransactionStatus(
+        transaction.id,
+        'Completed',
+        'Marked as complete via Transaction Monitoring',
+      );
+      
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Transaction ${transaction.transactionNumber} marked as completed'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${result['error']}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (isLoadingSettings) {
-      return const Center(child: CircularProgressIndicator());
+    if (_isLoadingSettings || _isInitialLoad) {
+      return _buildSkeletonScreen(context);
     }
     
     final primaryColor = getPrimaryColor();
@@ -244,18 +222,21 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ENHANCED: Transaction Stats Card with centered content
-                  _buildTransactionStatsCard(
-                    primaryColor,
-                    isDarkMode,
-                    cardColor,
-                    textColor,
-                    context,
-                  ),
+                  // Transaction Stats Card
+                  if (_isLoadingStats || _isLoadingTransactions)
+                    _buildSkeletonStatsCard(isMobile, isDarkMode, cardColor, context)
+                  else
+                    _buildTransactionStatsCard(
+                      primaryColor,
+                      isDarkMode,
+                      cardColor,
+                      textColor,
+                      context,
+                    ),
 
                   const SizedBox(height: 16),
 
-                  // UPDATED: Filters Card with theme
+                  // Filters Card
                   Container(
                     constraints: BoxConstraints(
                       minHeight: isMobile ? 200 : 150,
@@ -373,7 +354,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                   ),
                                   const SizedBox(height: 12),
                                   DropdownButtonFormField<String>(
-                                    initialValue: _selectedStatus,
+                                    value: _selectedStatus,
                                     dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                     style: TextStyle(color: textColor),
                                     decoration: InputDecoration(
@@ -394,7 +375,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                       ),
                                       prefixIcon: Icon(Icons.stairs, color: primaryColor),
                                     ),
-                                    items: ['All', 'Completed', 'Pending', 'Cancelled']
+                                    items: ['All', 'Completed', 'Pending', 'Cancelled', 'Refunded']
                                         .map((status) => DropdownMenuItem(
                                               value: status,
                                               child: Text(status, style: TextStyle(color: textColor)),
@@ -408,7 +389,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                   ),
                                   const SizedBox(height: 12),
                                   DropdownButtonFormField<String>(
-                                    initialValue: _selectedPaymentMethod,
+                                    value: _selectedPaymentMethod,
                                     dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                     style: TextStyle(color: textColor),
                                     decoration: InputDecoration(
@@ -429,7 +410,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                       ),
                                       prefixIcon: Icon(Icons.payment, color: primaryColor),
                                     ),
-                                    items: ['All', 'Cash', 'GCash', 'Bank Transfer', 'Credit Card']
+                                    items: ['All', 'Cash', 'GCash', 'Bank Transfer', 'Credit Card', 'PayMaya']
                                         .map((method) => DropdownMenuItem(
                                               value: method,
                                               child: Text(method, style: TextStyle(color: textColor)),
@@ -517,7 +498,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                   Expanded(
                                     flex: 2,
                                     child: DropdownButtonFormField<String>(
-                                      initialValue: _selectedStatus,
+                                      value: _selectedStatus,
                                       isExpanded: true,
                                       dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                       style: TextStyle(color: textColor),
@@ -539,7 +520,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                         ),
                                         prefixIcon: Icon(Icons.stairs, color: primaryColor),
                                       ),
-                                      items: ['All', 'Completed', 'Pending', 'Cancelled']
+                                      items: ['All', 'Completed', 'Pending', 'Cancelled', 'Refunded']
                                           .map((status) => DropdownMenuItem(
                                                 value: status,
                                                 child: Text(
@@ -560,7 +541,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                   Expanded(
                                     flex: 2,
                                     child: DropdownButtonFormField<String>(
-                                      initialValue: _selectedPaymentMethod,
+                                      value: _selectedPaymentMethod,
                                       isExpanded: true,
                                       dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                       style: TextStyle(color: textColor),
@@ -582,7 +563,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                         ),
                                         prefixIcon: Icon(Icons.payment, color: primaryColor),
                                       ),
-                                      items: ['All', 'Cash', 'GCash', 'Bank Transfer', 'Credit Card']
+                                      items: ['All', 'Cash', 'GCash', 'Bank Transfer', 'Credit Card', 'PayMaya']
                                           .map((method) => DropdownMenuItem(
                                                 value: method,
                                                 child: Text(
@@ -609,7 +590,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
 
                   const SizedBox(height: 16),
 
-                  // UPDATED: Transactions List Card with theme
+                  // Transactions List Card
                   Container(
                     constraints: const BoxConstraints(
                       minHeight: 200,
@@ -649,7 +630,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
-                                      'RECENT TRANSACTIONS',
+                                      'TRANSACTION HISTORY',
                                       style: TextStyle(
                                         fontSize: Responsive.getTitleFontSize(context),
                                         fontWeight: FontWeight.bold,
@@ -677,59 +658,63 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                               ],
                             ),
                             const SizedBox(height: 16),
-                            _filteredTransactions.isEmpty
-                                ? Container(
-                                    constraints: const BoxConstraints(
-                                      minHeight: 150,
-                                    ),
-                                    child: Center(
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            Icons.receipt_long,
-                                            size: 60,
-                                            color: mutedTextColor,
-                                          ),
-                                          const SizedBox(height: 16),
-                                          Text(
-                                            'No transactions found',
-                                            style: TextStyle(
-                                              fontSize: Responsive.getBodyFontSize(context),
-                                              color: mutedTextColor,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Try adjusting your filters or date',
-                                            style: TextStyle(
-                                              fontSize: Responsive.getBodyFontSize(context),
-                                              color: mutedTextColor,
-                                            ),
-                                          ),
-                                        ],
+                            
+                            if (_isLoadingTransactions)
+                              _buildSkeletonTransactions(isDarkMode, mutedTextColor, context)
+                            else if (_filteredTransactions.isEmpty)
+                              Container(
+                                constraints: const BoxConstraints(
+                                  minHeight: 150,
+                                ),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.receipt_long,
+                                        size: 60,
+                                        color: mutedTextColor,
                                       ),
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    shrinkWrap: true,
-                                    physics: const NeverScrollableScrollPhysics(),
-                                    itemCount: _filteredTransactions.length,
-                                    itemBuilder: (context, index) {
-                                      final transaction = _filteredTransactions[index];
-                                      return _buildTransactionCard(
-                                        transaction, 
-                                        primaryColor, 
-                                        context, 
-                                        isMobile,
-                                        isDarkMode: isDarkMode,
-                                        cardColor: cardColor,
-                                        textColor: textColor,
-                                        mutedTextColor: mutedTextColor,
-                                      );
-                                    },
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'No transactions found',
+                                        style: TextStyle(
+                                          fontSize: Responsive.getBodyFontSize(context),
+                                          color: mutedTextColor,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Try adjusting your filters or date',
+                                        style: TextStyle(
+                                          fontSize: Responsive.getBodyFontSize(context),
+                                          color: mutedTextColor,
+                                        ),
+                                      ),
+                                    ],
                                   ),
+                                ),
+                              )
+                            else
+                              ListView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: _filteredTransactions.length,
+                                itemBuilder: (context, index) {
+                                  final transaction = _filteredTransactions[index];
+                                  return _buildTransactionCard(
+                                    transaction, 
+                                    primaryColor, 
+                                    context, 
+                                    isMobile,
+                                    isDarkMode: isDarkMode,
+                                    cardColor: cardColor,
+                                    textColor: textColor,
+                                    mutedTextColor: mutedTextColor,
+                                  );
+                                },
+                              ),
                           ],
                         ),
                       ),
@@ -741,6 +726,447 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
           );
         },
       ),
+    );
+  }
+
+  Widget _buildSkeletonScreen(BuildContext context) {
+    final isMobile = Responsive.isMobile(context);
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = getPrimaryColor();
+    
+    return Scaffold(
+      backgroundColor: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade50,
+      body: SingleChildScrollView(
+        padding: Responsive.getScreenPadding(context),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Skeleton Stats Card
+            _buildSkeletonStatsCard(isMobile, isDarkMode, 
+              isDarkMode ? Colors.grey.shade800 : Colors.white, 
+              context
+            ),
+
+            const SizedBox(height: 16),
+
+            // Skeleton Filters Card
+            Container(
+              constraints: BoxConstraints(
+                minHeight: isMobile ? 200 : 150,
+              ),
+              child: Card(
+                elevation: isDarkMode ? 2 : 3,
+                color: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                    width: 1,
+                  ),
+                ),
+                child: Padding(
+                  padding: Responsive.getCardPadding(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            width: 150,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      if (isMobile)
+                        Column(
+                          children: [
+                            Container(
+                              height: 50,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              height: 50,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              height: 50,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              height: 50,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Container(
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: Responsive.getHorizontalSpacing(context).width),
+                            Expanded(
+                              flex: 2,
+                              child: Container(
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: Responsive.getHorizontalSpacing(context).width),
+                            Expanded(
+                              flex: 2,
+                              child: Container(
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: Responsive.getHorizontalSpacing(context).width),
+                            Expanded(
+                              flex: 2,
+                              child: Container(
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Skeleton Transactions List
+            Container(
+              constraints: const BoxConstraints(
+                minHeight: 200,
+              ),
+              child: Card(
+                elevation: isDarkMode ? 2 : 3,
+                color: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                    width: 1,
+                  ),
+                ),
+                child: Padding(
+                  padding: Responsive.getCardPadding(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                width: 200,
+                                height: 20,
+                                decoration: BoxDecoration(
+                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            width: 80,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Skeleton transaction cards
+                      for (int i = 0; i < 3; i++)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Container(
+                            height: 100,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonStatsCard(bool isMobile, bool isDarkMode, Color cardColor, BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(
+        minHeight: 150,
+      ),
+      child: Card(
+        elevation: isDarkMode ? 2 : 3,
+        color: cardColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+        child: Padding(
+          padding: Responsive.getCardPadding(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Skeleton header
+              Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    width: 200,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 8),
+              
+              // Skeleton subtitle
+              Container(
+                width: 150,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // Skeleton stats grid
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 150,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  Responsive.buildResponsiveCardGrid(
+                    context: context,
+                    title: '',
+                    titleColor: Colors.transparent,
+                    centerTitle: true,
+                    cards: [
+                      _buildSkeletonStatCard(isDarkMode, context),
+                      _buildSkeletonStatCard(isDarkMode, context),
+                      _buildSkeletonStatCard(isDarkMode, context),
+                      _buildSkeletonStatCard(isDarkMode, context),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonStatCard(bool isDarkMode, BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16) * 0.8),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade400,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: 60,
+            height: 12,
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade400,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            width: 80,
+            height: 16,
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade400,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkeletonTransactions(bool isDarkMode, Color mutedTextColor, BuildContext context) {
+    return Column(
+      children: [
+        for (int i = 0; i < 3; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Container(
+              height: 120,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          width: 120,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade400,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        Container(
+                          width: 80,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade400,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 200,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 150,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      width: double.infinity,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -817,7 +1243,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
               
               const SizedBox(height: 16),
               
-              // Centered Stats Grid - Updated to match SalesMonitoring style
+              // Centered Stats Grid
               Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -967,13 +1393,37 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Text(
-                    transaction.transactionNumber,
-                    style: TextStyle(
-                      fontSize: Responsive.getSubtitleFontSize(context),
-                      fontWeight: FontWeight.bold,
-                      color: primaryColor,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        // Use displayTransactionNumber instead of transactionNumber
+                        transaction.displayTransactionNumber,
+                        style: TextStyle(
+                          fontSize: Responsive.getSubtitleFontSize(context),
+                          fontWeight: FontWeight.bold,
+                          color: primaryColor,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.access_time,
+                            size: 12,
+                            color: mutedTextColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${transaction.formattedTime}',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: mutedTextColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
                 _buildStatusChip(transaction.status, isDarkMode: isDarkMode),
@@ -991,15 +1441,30 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    transaction.customerName,
-                    style: TextStyle(
-                      fontSize: Responsive.getBodyFontSize(context),
-                      fontWeight: FontWeight.bold,
-                      color: textColor,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        transaction.customerName,
+                        style: TextStyle(
+                          fontSize: Responsive.getBodyFontSize(context),
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (transaction.customerPhone.isNotEmpty && transaction.customerPhone != '-')
+                        Text(
+                          transaction.customerPhone,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: mutedTextColor,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -1042,6 +1507,66 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
             
             const SizedBox(height: 12),
             
+            // Transaction Items Summary
+            if (transaction.items.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Items (${transaction.items.length}):',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: mutedTextColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    ...transaction.items.take(2).map((item) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        children: [
+                          Text(
+                            '• ',
+                            style: TextStyle(color: mutedTextColor),
+                          ),
+                          Expanded(
+                            child: Text(
+                              '${item.productName} x${item.quantity}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: mutedTextColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+                    if (transaction.items.length > 2)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '+ ${transaction.items.length - 2} more items',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: mutedTextColor,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -1070,8 +1595,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                   Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.receipt, size: 20),
-                        color: primaryColor,
+                        icon: Icon(Icons.receipt, size: 20, color: primaryColor),
                         onPressed: () {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -1084,37 +1608,23 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                       ),
                       if (transaction.status == 'Pending')
                         IconButton(
-                          icon: const Icon(Icons.check_circle, size: 20),
-                          color: Colors.green,
+                          icon: const Icon(Icons.check_circle, size: 20, color: Colors.green),
+                          onPressed: () => _markAsComplete(transaction),
+                          tooltip: 'Mark as Complete',
+                        ),
+                      if (transaction.status == 'Completed')
+                        IconButton(
+                          icon: const Icon(Icons.refresh, size: 20, color: Colors.orange),
                           onPressed: () {
-                            setState(() {
-                              final idx = _transactions.indexWhere((t) => t.id == transaction.id);
-                              if (idx != -1) {
-                                _transactions[idx] = TransactionModel(
-                                  id: transaction.id,
-                                  transactionNumber: transaction.transactionNumber,
-                                  transactionDate: transaction.transactionDate,
-                                  customerName: transaction.customerName,
-                                  customerPhone: transaction.customerPhone,
-                                  paymentMethod: transaction.paymentMethod,
-                                  totalAmount: transaction.totalAmount,
-                                  amountPaid: transaction.amountPaid,
-                                  change: transaction.change,
-                                  status: 'Completed',
-                                  items: transaction.items,
-                                  notes: transaction.notes,
-                                  createdAt: transaction.createdAt,
-                                );
-                              }
-                            });
+                            // TODO: Implement refund functionality
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Transaction ${transaction.transactionNumber} marked as completed'),
-                                backgroundColor: Colors.green,
+                              const SnackBar(
+                                content: Text('Refund functionality coming soon'),
+                                backgroundColor: Colors.orange,
                               ),
                             );
                           },
-                          tooltip: 'Mark as Complete',
+                          tooltip: 'Refund Transaction',
                         ),
                     ],
                   ),
@@ -1154,39 +1664,37 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                   if (transaction.status == 'Pending')
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            final idx = _transactions.indexWhere((t) => t.id == transaction.id);
-                            if (idx != -1) {
-                              _transactions[idx] = TransactionModel(
-                                id: transaction.id,
-                                transactionNumber: transaction.transactionNumber,
-                                transactionDate: transaction.transactionDate,
-                                customerName: transaction.customerName,
-                                customerPhone: transaction.customerPhone,
-                                paymentMethod: transaction.paymentMethod,
-                                totalAmount: transaction.totalAmount,
-                                amountPaid: transaction.amountPaid,
-                                change: transaction.change,
-                                status: 'Completed',
-                                items: transaction.items,
-                                notes: transaction.notes,
-                                createdAt: transaction.createdAt,
-                              );
-                            }
-                          });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Transaction ${transaction.transactionNumber} marked as completed'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.check_circle, size: 16, color: Colors.white),
-                        label: const Text('Complete', style: TextStyle(color: Colors.white)),
+                        onPressed: () => _markAsComplete(transaction),
+                        icon: Icon(Icons.check_circle, size: 16, color: Colors.white),
+                        label: Text('Complete', style: TextStyle(color: Colors.white)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                      ),
+                    ),
+                  if (transaction.status == 'Completed')
+                    const SizedBox(width: 8),
+                  if (transaction.status == 'Completed')
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          // TODO: Implement refund functionality
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Refund functionality coming soon'),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                        },
+                        icon: Icon(Icons.refresh, size: 16, color: Colors.orange),
+                        label: const Text(
+                          'Refund',
+                          style: TextStyle(color: Colors.orange),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          side: const BorderSide(color: Colors.orange),
                         ),
                       ),
                     ),
@@ -1219,6 +1727,11 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
         chipColor = isDarkMode ? Colors.red.shade900 : Colors.red.shade100;
         textColor = isDarkMode ? Colors.red.shade200 : Colors.red.shade800;
         icon = Icons.cancel;
+        break;
+      case 'refunded':
+        chipColor = isDarkMode ? Colors.purple.shade900 : Colors.purple.shade100;
+        textColor = isDarkMode ? Colors.purple.shade200 : Colors.purple.shade800;
+        icon = Icons.refresh;
         break;
       default:
         chipColor = isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100;

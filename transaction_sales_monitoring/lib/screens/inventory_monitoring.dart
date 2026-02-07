@@ -1,7 +1,5 @@
 // lib/screens/inventory_monitoring.dart - FIXED VERSION
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../utils/responsive.dart';
 import '../models/inventory.dart';
 import '../models/category_model.dart';

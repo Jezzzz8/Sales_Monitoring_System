@@ -1,7 +1,6 @@
 // lib/services/image_upload_service.dart
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../firebase/firebase_config.dart';

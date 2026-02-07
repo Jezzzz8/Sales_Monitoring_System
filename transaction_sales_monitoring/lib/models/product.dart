@@ -3,8 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Product {
   final String id;
-  final String category; // This should be the category name from Firebase
-  final String categoryId; // Keep this if you still need it
+  final String category;
+  final String categoryId;
   final String name;
   final String description;
   final double price;
@@ -21,8 +21,8 @@ class Product {
 
   Product({
     required this.id,
-    required this.category, // This should be category name
-    this.categoryId = '', // Add this field
+    required this.category,
+    this.categoryId = '',
     required this.name,
     required this.description,
     required this.price,
@@ -42,8 +42,8 @@ class Product {
     return {
       'id': id,
       'name': name,
-      'category': category, // Map to 'category' field
-      'categoryId': categoryId, // Keep if needed
+      'category': category,
+      'categoryId': categoryId,
       'description': description,
       'price': price,
       'cost': cost,
@@ -64,8 +64,8 @@ class Product {
     return Product(
       id: doc.id,
       name: data['name'] ?? '',
-      category: data['category'] ?? '', // Get category name
-      categoryId: data['categoryId'] ?? '', // Get category ID if exists
+      category: data['category'] ?? '',
+      categoryId: data['categoryId'] ?? '',
       description: data['description'] ?? '',
       price: (data['price'] ?? 0).toDouble(),
       cost: (data['cost'] ?? 0).toDouble(),

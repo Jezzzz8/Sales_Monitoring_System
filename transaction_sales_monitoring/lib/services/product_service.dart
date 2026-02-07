@@ -144,7 +144,7 @@ class ProductService {
             .where((product) =>
                 product.isActive &&  // Filter in memory
                 (product.name.toLowerCase().contains(query.toLowerCase()) ||
-                 (product.description ?? '').toLowerCase().contains(query.toLowerCase())))
+                 (product.description).toLowerCase().contains(query.toLowerCase())))
             .toList());
   }
 

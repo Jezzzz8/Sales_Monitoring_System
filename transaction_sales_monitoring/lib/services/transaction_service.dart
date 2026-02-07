@@ -1,4 +1,4 @@
-// lib/services/transaction_service.dart - UPDATED VERSION with Firebase integration
+// lib/services/transaction_service.dart - UPDATED VERSION
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../firebase/firebase_config.dart';
 import '../models/transaction.dart';
@@ -34,7 +34,8 @@ class TransactionService {
         // Get current stock
         final productDoc = await productRef.get();
         if (productDoc.exists) {
-          final currentStock = productDoc.data()?['stock'] ?? 0;
+          final productData = productDoc.data() as Map<String, dynamic>;
+          final currentStock = (productData['stock'] ?? 0).toInt();
           final newStock = currentStock - item.quantity;
           
           batch.update(productRef, {
@@ -62,14 +63,43 @@ class TransactionService {
     }
   }
 
-  // Get all transactions stream
+  // Get all transactions stream - FIXED VERSION
   static Stream<List<TransactionModel>> getTransactionsStream() {
     return transactionsCollection
         .orderBy('date', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) {
-              return TransactionModel.fromFirestore(doc);
-            }).toList());
+        .map((snapshot) {
+          print('Total documents in snapshot: ${snapshot.docs.length}');
+          
+          final transactions = snapshot.docs.map((doc) {
+            try {
+              final transaction = TransactionModel.fromFirestore(doc);
+              print('Successfully parsed transaction: ${transaction.transactionNumber}');
+              return transaction;
+            } catch (e) {
+              print('Error parsing document ${doc.id}: $e');
+              print('Document data: ${doc.data()}');
+              return TransactionModel(
+                id: doc.id,
+                transactionNumber: '#ERROR-${doc.id}',
+                transactionDate: DateTime.now(),
+                customerName: 'Error Loading',
+                customerPhone: '-',
+                paymentMethod: 'Cash',
+                totalAmount: 0,
+                amountPaid: 0,
+                change: 0,
+                status: 'Error',
+                items: [],
+                notes: 'Error loading transaction data',
+                createdAt: DateTime.now(),
+              );
+            }
+          }).toList();
+          
+          print('Successfully parsed ${transactions.length} transactions');
+          return transactions;
+        });
   }
 
   // Get transactions by date range
@@ -83,9 +113,9 @@ class TransactionService {
         .where('date', isLessThanOrEqualTo: endTimestamp)
         .orderBy('date', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) {
-              return TransactionModel.fromFirestore(doc);
-            }).toList());
+        .map((snapshot) => snapshot.docs
+            .map((doc) => TransactionModel.fromFirestore(doc))
+            .toList());
   }
 
   // Get today's transactions
@@ -97,7 +127,7 @@ class TransactionService {
     return getTransactionsByDateRange(startOfDay, endOfDay);
   }
 
-  // Get daily summary
+  // Get daily summary - FIXED VERSION
   static Future<Map<String, dynamic>> getDailySummary(DateTime date) async {
     final startOfDay = DateTime(date.year, date.month, date.day, 0, 0, 0);
     final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
@@ -118,23 +148,24 @@ class TransactionService {
 
       final paymentMethods = <String, double>{};
       for (final transaction in transactions) {
-        paymentMethods[transaction.paymentMethod] =
-            (paymentMethods[transaction.paymentMethod] ?? 0) + transaction.totalAmount;
+        final method = transaction.paymentMethod;
+        paymentMethods[method] = (paymentMethods[method] ?? 0) + transaction.totalAmount;
       }
 
       // Get top selling products
       final productSales = <String, Map<String, dynamic>>{};
       for (final transaction in transactions) {
         for (final item in transaction.items) {
-          if (!productSales.containsKey(item.productId)) {
-            productSales[item.productId] = {
+          final productId = item.productId;
+          if (!productSales.containsKey(productId)) {
+            productSales[productId] = {
               'name': item.productName,
               'quantity': 0,
               'revenue': 0.0,
             };
           }
-          productSales[item.productId]!['quantity'] += item.quantity;
-          productSales[item.productId]!['revenue'] += item.total;
+          productSales[productId]!['quantity'] = (productSales[productId]!['quantity'] as int) + item.quantity;
+          productSales[productId]!['revenue'] = (productSales[productId]!['revenue'] as double) + item.total;
         }
       }
 
@@ -195,8 +226,7 @@ class TransactionService {
       final paymentMethodBreakdown = <String, double>{};
       for (final transaction in transactions) {
         final method = transaction.paymentMethod;
-        paymentMethodBreakdown[method] =
-            (paymentMethodBreakdown[method] ?? 0) + transaction.totalAmount;
+        paymentMethodBreakdown[method] = (paymentMethodBreakdown[method] ?? 0) + transaction.totalAmount;
       }
 
       return {
@@ -246,15 +276,16 @@ class TransactionService {
       final productSales = <String, Map<String, dynamic>>{};
       for (final transaction in transactions) {
         for (final item in transaction.items) {
-          if (!productSales.containsKey(item.productId)) {
-            productSales[item.productId] = {
+          final productId = item.productId;
+          if (!productSales.containsKey(productId)) {
+            productSales[productId] = {
               'name': item.productName,
               'quantity': 0,
               'revenue': 0.0,
             };
           }
-          productSales[item.productId]!['quantity'] += item.quantity;
-          productSales[item.productId]!['revenue'] += item.total;
+          productSales[productId]!['quantity'] = (productSales[productId]!['quantity'] as int) + item.quantity;
+          productSales[productId]!['revenue'] = (productSales[productId]!['revenue'] as double) + item.total;
         }
       }
 
@@ -264,8 +295,8 @@ class TransactionService {
       // Payment method breakdown
       final paymentMethods = <String, double>{};
       for (final transaction in transactions) {
-        paymentMethods[transaction.paymentMethod] =
-            (paymentMethods[transaction.paymentMethod] ?? 0) + transaction.totalAmount;
+        final method = transaction.paymentMethod;
+        paymentMethods[method] = (paymentMethods[method] ?? 0) + transaction.totalAmount;
       }
 
       return {
@@ -295,7 +326,7 @@ class TransactionService {
     try {
       await transactionsCollection.doc(transactionId).update({
         'status': status,
-        'notes': notes,
+        'notes': notes ?? '',
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -312,7 +343,8 @@ class TransactionService {
             final productDoc = await productRef.get();
             
             if (productDoc.exists) {
-              final currentStock = productDoc.data()?['stock'] ?? 0;
+              final productData = productDoc.data() as Map<String, dynamic>;
+              final currentStock = (productData['stock'] ?? 0).toInt();
               final newStock = currentStock + item.quantity;
               
               batch.update(productRef, {
@@ -340,7 +372,7 @@ class TransactionService {
     final month = now.month.toString().padLeft(2, '0');
     final day = now.day.toString().padLeft(2, '0');
     final random = (DateTime.now().millisecondsSinceEpoch % 10000).toString().padLeft(4, '0');
-    return 'ORD-${year}${month}${day}-${random}';
+    return '#ORD-${year}${month}${day}-${random}';
   }
 
   // Get transaction by ID
@@ -367,4 +399,102 @@ class TransactionService {
       return {'success': false, 'error': 'Failed to delete transaction: ${e.toString()}'};
     }
   }
+
+  // Get pending transactions
+  static Stream<List<TransactionModel>> getPendingTransactions() {
+    return transactionsCollection
+        .where('status', isEqualTo: 'Pending')
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => TransactionModel.fromFirestore(doc))
+            .toList());
+  }
+
+  // Get completed transactions
+  static Stream<List<TransactionModel>> getCompletedTransactions() {
+    return transactionsCollection
+        .where('status', isEqualTo: 'Completed')
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => TransactionModel.fromFirestore(doc))
+            .toList());
+  }
+
+  static Future<Map<String, dynamic>> getWeeklySummary() async {
+    try {
+      final now = DateTime.now();
+      final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+      final startOfWeekDate = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day, 0, 0, 0);
+      final endOfWeekDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+      
+      final snapshot = await transactionsCollection
+          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfWeekDate))
+          .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfWeekDate))
+          .get();
+
+      final transactions = snapshot.docs.map((doc) => TransactionModel.fromFirestore(doc)).toList();
+
+      // Calculate summary data
+      double totalSales = 0.0;
+      int totalTransactions = transactions.length;
+      Map<String, double> categorySales = {};
+      Map<DateTime, double> dailySales = {};
+      Map<int, double> hourlySales = {};
+
+      for (final transaction in transactions) {
+        totalSales += transaction.totalAmount;
+        
+        // Daily sales
+        final date = DateTime(
+          transaction.transactionDate.year,
+          transaction.transactionDate.month,
+          transaction.transactionDate.day,
+        );
+        dailySales[date] = (dailySales[date] ?? 0) + transaction.totalAmount;
+        
+        // Hourly sales
+        final hour = transaction.transactionDate.hour;
+        hourlySales[hour] = (hourlySales[hour] ?? 0) + transaction.totalAmount;
+        
+        // Category sales (simplified - would need product details for accurate)
+        // For now, we'll just track transaction-level data
+      }
+
+      // Prepare daily data
+      final dailyData = dailySales.entries.map((entry) => {
+        'date': entry.key,
+        'sales': entry.value,
+      }).toList();
+      
+      // Prepare hourly data
+      final hourlyData = List.generate(24, (hour) => {
+        'hour': '$hour:00',
+        'sales': hourlySales[hour] ?? 0.0,
+      });
+
+      return {
+        'totalSales': totalSales,
+        'totalTransactions': totalTransactions,
+        'averageSale': totalTransactions > 0 ? totalSales / totalTransactions : 0.0,
+        'topCategories': [], // Empty for now - would need product data
+        'categorySales': categorySales,
+        'dailyData': dailyData,
+        'hourlyData': hourlyData,
+      };
+    } catch (e) {
+      print('Error getting weekly summary: $e');
+      return {
+        'totalSales': 0.0,
+        'totalTransactions': 0,
+        'averageSale': 0.0,
+        'topCategories': [],
+        'categorySales': {},
+        'dailyData': [],
+        'hourlyData': [],
+      };
+    }
+  }
+
 }
