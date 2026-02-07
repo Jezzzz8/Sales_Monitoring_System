@@ -1,11 +1,14 @@
-// pos_transaction.dart - COMPLETE FIXED VERSION
+// pos_transaction.dart - UPDATED with complete fixes
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/settings_mixin.dart';
 import '../models/product.dart';
 import '../models/transaction.dart';
 import '../utils/responsive.dart';
 import '../services/settings_service.dart';
 import '../models/settings_model.dart';
+import '../services/product_service.dart';
+import '../services/transaction_service.dart';
 
 class POSTransaction extends StatefulWidget {
   const POSTransaction({super.key});
@@ -17,12 +20,13 @@ class POSTransaction extends StatefulWidget {
 class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   // Settings integration
   AppSettings? _settings;
-  // ignore: unused_field
   bool _isLoadingSettings = true;
   
-  final List<Product> _products = [
-    
-  ];
+  // Firebase data
+  Stream<List<Product>>? _productsStream;
+  List<Product> _products = [];
+  bool _isLoadingProducts = true;
+  bool _isInitialLoad = true;
 
   final List<TransactionItem> _cartItems = [];
   final TextEditingController _customerNameController = TextEditingController();
@@ -32,9 +36,24 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   String _paymentMethod = 'Cash';
   double _amountPaid = 0;
   bool _showCustomerForm = true;
+  bool _isProcessingTransaction = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+    _loadProducts();
+    
+    // Initial data load with delay to show skeleton
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        setState(() {
+          _isInitialLoad = false;
+        });
+      }
+    });
+  }
 
-  // ignore: unused_element
   Future<void> _loadSettings() async {
     setState(() => _isLoadingSettings = true);
     try {
@@ -46,6 +65,27 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
     setState(() => _isLoadingSettings = false);
   }
 
+  Future<void> _loadProducts() async {
+    setState(() => _isLoadingProducts = true);
+    try {
+      // CHANGED: Get ALL products instead of just featured
+      _productsStream = ProductService.getProducts();
+      // Listen to the stream and update local list
+      _productsStream?.listen((products) {
+        if (mounted) {
+          setState(() {
+            // Only include active products, but include out-of-stock ones
+            _products = products.where((p) => p.isActive).toList();
+            _isLoadingProducts = false;
+          });
+        }
+      });
+    } catch (e) {
+      print('Error loading products: $e');
+      setState(() => _isLoadingProducts = false);
+    }
+  }
+
   Color _getPrimaryColor() {
     return _settings?.primaryColorValue ?? Colors.deepOrange;
   }
@@ -55,7 +95,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   }
 
   double get _total {
-    // CHANGED: Total is now just the subtotal (no tax)
     return _subtotal;
   }
 
@@ -68,6 +107,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   }
 
   void _addToCart(Product product) {
+    // This check is still needed in case someone bypasses the disabled state
     if (product.stock <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -104,7 +144,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       });
     }
 
-    // Clear any existing snackbars before showing new one
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -132,7 +171,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       }
     });
     
-    // Clear any existing snackbars before showing new one
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -152,7 +190,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       _cartItems.removeAt(index);
     });
     
-    // Clear any existing snackbars before showing new one
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -166,7 +203,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   
   void _clearCart({VoidCallback? onAfterClear}) {
     if (_cartItems.isEmpty) {
-      // Clear any existing snackbars before showing new one
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -201,10 +237,8 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                 _showCustomerForm = true;
               });
               
-              // Call the modal update callback if provided
               onAfterClear?.call();
               
-              // Clear any existing snackbars before showing new one
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
@@ -224,10 +258,8 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
     );
   }
 
-  void _processTransaction() {
+  Future<void> _processTransaction() async {
     if (_cartItems.isEmpty) {
-      // Clear any existing snackbars before showing new one
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please add items to cart'),
@@ -242,8 +274,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       setState(() {
         _showCustomerForm = true;
       });
-      // Clear any existing snackbars before showing new one
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please enter customer name'),
@@ -255,8 +285,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
     }
 
     if (_amountPaid < _total) {
-      // Clear any existing snackbars before showing new one
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Amount paid (₱${_amountPaid.toStringAsFixed(2)}) is less than total (₱${_total.toStringAsFixed(2)})'),
@@ -267,23 +295,61 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       return;
     }
 
-    final transaction = TransactionModel(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      transactionNumber: 'TRX-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}',
-      transactionDate: DateTime.now(),
-      customerName: _customerNameController.text,
-      customerPhone: _customerPhoneController.text,
-      paymentMethod: _paymentMethod,
-      totalAmount: _total,
-      amountPaid: _amountPaid,
-      change: _change,
-      status: 'Completed',
-      items: List.from(_cartItems),
-      notes: _notesController.text,
-      createdAt: DateTime.now(),
-    );
+    setState(() {
+      _isProcessingTransaction = true;
+    });
 
-    _showReceiptDialog(transaction);
+    try {
+      final transaction = TransactionModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        transactionNumber: TransactionService.generateTransactionNumber(),
+        transactionDate: DateTime.now(),
+        customerName: _customerNameController.text.isNotEmpty 
+            ? _customerNameController.text 
+            : 'Walk-in',
+        customerPhone: _customerPhoneController.text.isNotEmpty
+            ? _customerPhoneController.text
+            : '-',
+        paymentMethod: _paymentMethod,
+        totalAmount: _total,
+        amountPaid: _amountPaid,
+        change: _change,
+        status: 'Completed',
+        items: List.from(_cartItems),
+        notes: _notesController.text,
+        createdAt: DateTime.now(),
+        cashier: 'Staff',
+        reference: '-',
+      );
+
+      // Save to Firebase
+      final result = await TransactionService.addTransaction(transaction);
+      
+      if (result['success'] == true) {
+        final savedTransaction = result['transaction'] as TransactionModel;
+        _showReceiptDialog(savedTransaction);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${result['error']}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error processing transaction: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } finally {
+      setState(() {
+        _isProcessingTransaction = false;
+      });
+    }
   }
 
   void _showReceiptDialog(TransactionModel transaction) {
@@ -341,7 +407,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
               const Divider(thickness: 2),
               const SizedBox(height: 12),
               Text('Customer: ${transaction.customerName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-              if (transaction.customerPhone.isNotEmpty)
+              if (transaction.customerPhone.isNotEmpty && transaction.customerPhone != '-')
                 Text('Phone: ${transaction.customerPhone}'),
               const SizedBox(height: 16),
               const Text(
@@ -362,7 +428,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                 ),
               )),
               const Divider(),
-              // REMOVED: Tax row from receipt
               _buildReceiptRow('Total', _total, isBold: true),
               const Divider(),
               _buildReceiptRow('Amount Paid', _amountPaid),
@@ -395,7 +460,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
               const SizedBox(height: 8),
               const Center(
                 child: Text(
-                  'Thank you for your order!',
+                  'Transaction saved to database!',
                   style: TextStyle(
                     fontStyle: FontStyle.italic,
                     color: Colors.grey,
@@ -464,7 +529,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
     }
     return _products.where((product) {
       return product.name.toLowerCase().contains(_searchController.text.toLowerCase()) ||
-             product.categoryId.toLowerCase().contains(_searchController.text.toLowerCase()) ||
+             product.category.toLowerCase().contains(_searchController.text.toLowerCase()) ||
              product.description.toLowerCase().contains(_searchController.text.toLowerCase());
     }).toList();
   }
@@ -482,16 +547,16 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
     }
   }
 
-double _getCardAspectRatio(BuildContext context) {
+  double _getCardAspectRatio(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     if (screenWidth < 600) {
-      return 0.65; // Mobile: taller cards
+      return 0.65;
     } else if (screenWidth < 960) {
-      return 0.7; // Tablet
+      return 0.7;
     } else if (screenWidth < 1280) {
-      return 0.75; // Small desktop
+      return 0.75;
     } else {
-      return 0.8; // Large desktop
+      return 0.8;
     }
   }
 
@@ -500,15 +565,16 @@ double _getCardAspectRatio(BuildContext context) {
     final isTablet = Responsive.isTablet(context);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     
-    // Calculate responsive values - FIXED: Reduced values for better fit
     final cardPadding = isMobile ? 6.0 : 8.0;
     final iconSize = isMobile ? 32.0 : (isTablet ? 36.0 : 28.0);
     final titleFontSize = isMobile ? 11.0 : (isTablet ? 13.0 : 11.0);
     final priceFontSize = isMobile ? 14.0 : (isTablet ? 16.0 : 13.0);
     
-    // FIXED: Use container with fixed height to prevent overflow
+    // Check if product is out of stock
+    final bool isOutOfStock = product.stock <= 0;
+    
     return SizedBox(
-      height: isMobile ? 160 : (isTablet ? 180 : 150), // Fixed height for consistency
+      height: isMobile ? 160 : (isTablet ? 180 : 150),
       child: Card(
         elevation: isDarkMode ? 1 : 2,
         shape: RoundedRectangleBorder(
@@ -516,22 +582,32 @@ double _getCardAspectRatio(BuildContext context) {
         ),
         color: isDarkMode ? Colors.grey.shade800 : Colors.white,
         child: InkWell(
-          onTap: () => _addToCart(product),
+          onTap: isOutOfStock 
+              ? null // Disable tap for out of stock products
+              : () => _addToCart(product),
           borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: EdgeInsets.all(cardPadding),
             decoration: BoxDecoration(
-              color: isDarkMode ? Colors.grey.shade800 : primaryColor.withOpacity(0.05),
+              color: isDarkMode 
+                  ? Colors.grey.shade800 
+                  : (isOutOfStock 
+                      ? Colors.grey.shade200.withOpacity(0.5)
+                      : primaryColor.withOpacity(0.05)),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isDarkMode ? Colors.grey.shade700 : primaryColor.withOpacity(0.1),
+                color: isDarkMode 
+                    ? Colors.grey.shade700 
+                    : (isOutOfStock 
+                        ? Colors.grey.shade400.withOpacity(0.5)
+                        : primaryColor.withOpacity(0.1)),
                 width: 1,
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Product Image/Icon with fixed aspect ratio
+                // Product Image/Icon Section - UPDATED
                 Expanded(
                   child: Container(
                     width: double.infinity,
@@ -544,23 +620,103 @@ double _getCardAspectRatio(BuildContext context) {
                                 Colors.grey.shade700,
                                 Colors.grey.shade800,
                               ]
-                            : [
-                                primaryColor.withOpacity(0.1),
-                                primaryColor.withOpacity(0.05),
-                              ],
+                            : (isOutOfStock
+                                ? [
+                                    Colors.grey.shade300.withOpacity(0.5),
+                                    Colors.grey.shade400.withOpacity(0.3),
+                                  ]
+                                : [
+                                    primaryColor.withOpacity(0.1),
+                                    primaryColor.withOpacity(0.05),
+                                  ]),
                       ),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Stack(
                       children: [
-                        Center(
-                          child: Icon(
-                            _getProductIcon(product.categoryId),
-                            color: isDarkMode ? primaryColor.withOpacity(0.8) : primaryColor,
-                            size: iconSize,
+                        // Show image if available, otherwise show icon
+                        if (product.image != null && product.image!.isNotEmpty)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              product.image!,
+                              width: double.infinity,
+                              height: double.infinity,
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Center(
+                                  child: CircularProgressIndicator(
+                                    value: loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress.cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                    color: primaryColor,
+                                  ),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return Center(
+                                  child: Icon(
+                                    _getProductIcon(product.category),
+                                    color: isDarkMode 
+                                        ? primaryColor.withOpacity(0.8)
+                                        : (isOutOfStock
+                                            ? Colors.grey.shade500
+                                            : primaryColor),
+                                    size: iconSize,
+                                  ),
+                                );
+                              },
+                            ),
+                          )
+                        else
+                          Center(
+                            child: Icon(
+                              _getProductIcon(product.category),
+                              color: isDarkMode 
+                                  ? primaryColor.withOpacity(0.8)
+                                  : (isOutOfStock
+                                      ? Colors.grey.shade500
+                                      : primaryColor),
+                              size: iconSize,
+                            ),
                           ),
-                        ),
-                        if (product.stock < 5)
+                        
+                        // Out of Stock Label
+                        if (isOutOfStock)
+                          Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.4),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Center(
+                                child: Transform.rotate(
+                                  angle: -0.2,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'OUT OF STOCK',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        
+                        // Low stock indicator (only show if not out of stock)
+                        if (product.stock < 5 && !isOutOfStock)
                           Positioned(
                             top: 4,
                             right: 4,
@@ -587,13 +743,16 @@ double _getCardAspectRatio(BuildContext context) {
                 
                 const SizedBox(height: 6),
                 
-                // Product Name
                 Text(
                   product.name,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: titleFontSize,
-                    color: isDarkMode ? Colors.white : Colors.black87,
+                    color: isDarkMode 
+                        ? Colors.white 
+                        : (isOutOfStock
+                            ? Colors.grey.shade600
+                            : Colors.black87),
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -601,19 +760,21 @@ double _getCardAspectRatio(BuildContext context) {
                 
                 const SizedBox(height: 4),
                 
-                // Price
                 Text(
                   '₱${product.price.toStringAsFixed(0)}',
                   style: TextStyle(
                     fontSize: priceFontSize,
                     fontWeight: FontWeight.bold,
-                    color: isDarkMode ? primaryColor.withOpacity(0.8) : primaryColor,
+                    color: isDarkMode 
+                        ? primaryColor.withOpacity(0.8)
+                        : (isOutOfStock
+                            ? Colors.grey.shade500
+                            : primaryColor),
                   ),
                 ),
                 
                 const SizedBox(height: 6),
                 
-                // Category and Stock info
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -623,15 +784,23 @@ double _getCardAspectRatio(BuildContext context) {
                           Icon(
                             Icons.category,
                             size: 10,
-                            color: isDarkMode ? Colors.grey.shade400 : Colors.grey,
+                            color: isDarkMode 
+                                ? Colors.grey.shade400
+                                : (isOutOfStock
+                                    ? Colors.grey.shade400
+                                    : Colors.grey),
                           ),
                           const SizedBox(width: 2),
                           Flexible(
                             child: Text(
-                              product.categoryId,
+                              product.category,
                               style: TextStyle(
                                 fontSize: 9,
-                                color: isDarkMode ? Colors.grey.shade400 : Colors.grey,
+                                color: isDarkMode 
+                                    ? Colors.grey.shade400
+                                    : (isOutOfStock
+                                        ? Colors.grey.shade400
+                                        : Colors.grey),
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -640,24 +809,44 @@ double _getCardAspectRatio(BuildContext context) {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.inventory,
-                          size: 10,
-                          color: product.stock < 5 ? Colors.red : Colors.green,
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${product.stock}',
-                          style: TextStyle(
-                            fontSize: 9,
+                    if (!isOutOfStock) // Only show stock if not out of stock
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.inventory,
+                            size: 10,
                             color: product.stock < 5 ? Colors.red : Colors.green,
-                            fontWeight: FontWeight.bold,
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 2),
+                          Text(
+                            '${product.stock}',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: product.stock < 5 ? Colors.red : Colors.green,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    if (isOutOfStock) // Show "Out of Stock" text instead of stock number
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.block,
+                            size: 10,
+                            color: Colors.red,
+                          ),
+                          SizedBox(width: 2),
+                          Text(
+                            'Out of Stock',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ],
@@ -668,10 +857,133 @@ double _getCardAspectRatio(BuildContext context) {
     );
   }
 
+  Widget _buildSkeletonProductCard(bool isMobile, {bool isDarkMode = false}) {
+    final isTablet = Responsive.isTablet(context);
+    final cardHeight = isMobile ? 160 : (isTablet ? 180 : 150);
+    final cardPadding = isMobile ? 6.0 : 8.0;
+    
+    return SizedBox(
+      height: cardHeight.toDouble(),
+      child: Card(
+        elevation: isDarkMode ? 1 : 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        color: isDarkMode ? Colors.grey.shade800 : Colors.white,
+        child: Container(
+          padding: EdgeInsets.all(cardPadding),
+          decoration: BoxDecoration(
+            color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+              width: 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Skeleton Image/Icon
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 6),
+              
+              // Skeleton Title
+              Container(
+                width: double.infinity,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              
+              const SizedBox(height: 4),
+              
+              // Skeleton Price
+              Container(
+                width: 80,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              
+              const SizedBox(height: 6),
+              
+              // Skeleton Category and Stock
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Flexible(
+                          child: Container(
+                            width: 60,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Container(
+                        width: 30,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   IconData _getProductIcon(String category) {
     switch (category) {
-      case '5': return Icons.celebration; // Whole Lechon
-      case '6': return Icons.restaurant_menu; // Lechon Belly
+      case '5': return Icons.celebration;
+      case '6': return Icons.restaurant_menu;
       default: return Icons.fastfood;
     }
   }
@@ -750,15 +1062,14 @@ double _getCardAspectRatio(BuildContext context) {
 
   @override
   Widget build(BuildContext context) {
-    if (isLoadingSettings) {
-      return const Center(child: CircularProgressIndicator());
+    if (_isLoadingSettings) {
+      return _buildSkeletonScreen(context);
     }
     
     final primaryColor = getPrimaryColor();
     final isMobile = Responsive.isMobile(context);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     
-    // Apply theme based on dark mode
     final backgroundColor = isDarkMode ? Colors.grey.shade900 : Colors.grey.shade50;
     final cardColor = isDarkMode ? Colors.grey.shade800 : Colors.white;
     final textColor = isDarkMode ? Colors.white : Colors.black87;
@@ -785,10 +1096,243 @@ double _getCardAspectRatio(BuildContext context) {
       ),
       child: Scaffold(
         backgroundColor: backgroundColor,
-        body: isMobile ? _buildMobileLayout(primaryColor, isDarkMode, backgroundColor, cardColor, textColor, hintTextColor) 
-                     : _buildDesktopLayout(primaryColor, isDarkMode, backgroundColor, cardColor, textColor, hintTextColor),
+        body: _isInitialLoad || _isLoadingProducts
+            ? _buildSkeletonScreen(context)
+            : (isMobile 
+                ? _buildMobileLayout(primaryColor, isDarkMode, backgroundColor, cardColor, textColor, hintTextColor) 
+                : _buildDesktopLayout(primaryColor, isDarkMode, backgroundColor, cardColor, textColor, hintTextColor)),
       ),
     );
+  }
+
+  Widget _buildSkeletonScreen(BuildContext context) {
+    final isMobile = Responsive.isMobile(context);
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = getPrimaryColor();
+    
+    if (isMobile) {
+      return Scaffold(
+        backgroundColor: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade50,
+        body: Column(
+          children: [
+            // Skeleton Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: isDarkMode ? Colors.grey.shade800 : primaryColor.withOpacity(0.8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 100,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        width: 80,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    width: 100,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Skeleton Search Bar
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Container(
+                height: 50,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(30),
+                  color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade200,
+                ),
+              ),
+            ),
+            
+            // Skeleton Product Grid
+            Expanded(
+              child: GridView.builder(
+                padding: const EdgeInsets.all(12),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: _getGridColumnCount(context),
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: _getCardAspectRatio(context),
+                ),
+                itemCount: 6, // Show 6 skeleton cards
+                itemBuilder: (context, index) {
+                  return _buildSkeletonProductCard(true, isDarkMode: isDarkMode);
+                },
+              ),
+            ),
+          ],
+        ),
+        floatingActionButton: Container(
+          width: 150,
+          height: 56,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade300,
+            borderRadius: BorderRadius.circular(28),
+          ),
+        ),
+      );
+    } else {
+      return Scaffold(
+        backgroundColor: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade50,
+        body: Row(
+          children: [
+            // Skeleton Products Panel
+            Expanded(
+              flex: 3,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Container(
+                      height: 50,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(30),
+                        color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade200,
+                      ),
+                    ),
+                  ),
+                  
+                  Expanded(
+                    child: GridView.builder(
+                      padding: const EdgeInsets.all(16),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: _getGridColumnCount(context),
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: _getCardAspectRatio(context),
+                      ),
+                      itemCount: 8,
+                      itemBuilder: (context, index) {
+                        return _buildSkeletonProductCard(false, isDarkMode: isDarkMode);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Skeleton Cart Panel
+            Expanded(
+              flex: 2,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(-2, 0),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? Colors.grey.shade800 : primaryColor.withOpacity(0.8),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.5),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Container(
+                            width: 150,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.7),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.5),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    Expanded(
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 80,
+                              height: 80,
+                              decoration: BoxDecoration(
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Container(
+                              width: 200,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              width: 150,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildMobileLayout(
@@ -803,7 +1347,7 @@ double _getCardAspectRatio(BuildContext context) {
       backgroundColor: backgroundColor,
       body: Column(
         children: [
-          // Header with cart info (unchanged)
+          // Header with cart info
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -852,7 +1396,7 @@ double _getCardAspectRatio(BuildContext context) {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text( // ADDED: Show total items count
+                    Text(
                       '$_totalItemCount items',
                       style: TextStyle(
                         color: isDarkMode ? Colors.white.withOpacity(0.8) : Colors.white.withOpacity(0.9),
@@ -869,7 +1413,7 @@ double _getCardAspectRatio(BuildContext context) {
                     size: 18, 
                     color: isDarkMode ? primaryColor : primaryColor
                   ),
-                  label: Text('$_totalItemCount Items', // CHANGED: Use totalItemCount
+                  label: Text('$_totalItemCount Items',
                     style: TextStyle(
                       color: isDarkMode ? primaryColor : primaryColor,
                     ),
@@ -887,7 +1431,7 @@ double _getCardAspectRatio(BuildContext context) {
             ),
           ),
           
-          // Search bar (unchanged)
+          // Search bar
           Padding(
             padding: const EdgeInsets.all(12),
             child: Container(
@@ -923,22 +1467,51 @@ double _getCardAspectRatio(BuildContext context) {
             ),
           ),
           
-          // Products grid with consistent column distribution - UPDATED
+          // Products grid
           Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.all(12),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: _getGridColumnCount(context),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: _getCardAspectRatio(context),
-              ),
-              itemCount: _filteredProducts.length,
-              itemBuilder: (context, index) {
-                final product = _filteredProducts[index];
-                return _buildProductCard(product, true);
-              },
-            ),
+            child: _filteredProducts.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 80,
+                          color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade300,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No products found',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: isDarkMode ? Colors.grey.shade400 : Colors.grey,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Try adjusting your search',
+                          style: TextStyle(
+                            color: isDarkMode ? Colors.grey.shade500 : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : GridView.builder(
+                    padding: const EdgeInsets.all(12),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: _getGridColumnCount(context),
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: _getCardAspectRatio(context),
+                    ),
+                    itemCount: _filteredProducts.length,
+                    itemBuilder: (context, index) {
+                      final product = _filteredProducts[index];
+                      return _buildProductCard(product, true);
+                    },
+                  ),
           ),
         ],
       ),
@@ -952,7 +1525,7 @@ double _getCardAspectRatio(BuildContext context) {
     );
   }
 
-Widget _buildDesktopLayout(
+  Widget _buildDesktopLayout(
     Color primaryColor, 
     bool isDarkMode, 
     Color backgroundColor, 
@@ -974,7 +1547,7 @@ Widget _buildDesktopLayout(
               color: backgroundColor,
               child: Column(
                 children: [
-                  // Search bar (unchanged)
+                  // Search bar
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Container(
@@ -1008,29 +1581,58 @@ Widget _buildDesktopLayout(
                     ),
                   ),
                   
-                  // Products grid with consistent column distribution - UPDATED
+                  // Products grid
                   Expanded(
-                    child: GridView.builder(
-                      padding: const EdgeInsets.all(16),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: _getGridColumnCount(context),
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        childAspectRatio: _getCardAspectRatio(context),
-                      ),
-                      itemCount: _filteredProducts.length,
-                      itemBuilder: (context, index) {
-                        final product = _filteredProducts[index];
-                        return _buildProductCard(product, false);
-                      },
-                    ),
+                    child: _filteredProducts.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.search_off,
+                                  size: 80,
+                                  color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade300,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No products found',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    color: isDarkMode ? Colors.grey.shade400 : Colors.grey,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Try adjusting your search',
+                                  style: TextStyle(
+                                    color: isDarkMode ? Colors.grey.shade500 : Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : GridView.builder(
+                            padding: const EdgeInsets.all(16),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: _getGridColumnCount(context),
+                              crossAxisSpacing: 16,
+                              mainAxisSpacing: 16,
+                              childAspectRatio: _getCardAspectRatio(context),
+                            ),
+                            itemCount: _filteredProducts.length,
+                            itemBuilder: (context, index) {
+                              final product = _filteredProducts[index];
+                              return _buildProductCard(product, false);
+                            },
+                          ),
                   ),
                 ],
               ),
             ),
           ),
 
-          // Cart panel (unchanged)
+          // Cart panel
           Expanded(
             flex: isLargeDesktop ? 3 : 2,
             child: _buildCartPanel(primaryColor, isDarkMode, backgroundColor, cardColor, textColor, hintTextColor),
@@ -1078,7 +1680,7 @@ Widget _buildDesktopLayout(
                         primaryColor,
                         primaryColor.withOpacity(0.8),
                       ],
-              ),
+            ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1101,7 +1703,7 @@ Widget _buildDesktopLayout(
                   ],
                 ),
                 Badge(
-                  label: Text('$_totalItemCount', // CHANGED: Use totalItemCount
+                  label: Text('$_totalItemCount',
                     style: TextStyle(
                       color: isDarkMode ? Colors.white : primaryColor,
                     ),
@@ -1333,8 +1935,6 @@ Widget _buildDesktopLayout(
                           ),
                           child: Column(
                             children: [
-                              // REMOVED: Subtotal display (not needed since total = subtotal)
-                              // REMOVED: Tax display
                               _buildTotalRow('Total', _total, isDarkMode: isDarkMode, isBold: true, fontSize: 18),
                               const SizedBox(height: 16),
                               TextField(
@@ -1464,7 +2064,7 @@ Widget _buildDesktopLayout(
             ),
           ),
         ],
-      ),
+      )
     );
   }
  
@@ -1527,7 +2127,7 @@ Widget _buildDesktopLayout(
                         ),
                         // FIXED: Add a Key to force rebuild of the badge
                         ValueListenableBuilder<int>(
-                          valueListenable: ValueNotifier<int>(_totalItemCount), // CHANGED: Use totalItemCount
+                          valueListenable: ValueNotifier<int>(_totalItemCount),
                           builder: (context, count, child) {
                             return Badge(
                               label: Text('$count',
@@ -1865,13 +2465,10 @@ Widget _buildDesktopLayout(
     int index, 
     bool isDarkMode, 
     Color primaryColor,
-    Function updateCartState  // This parameter must be defined
+    Function updateCartState
   ) {
-    // Store the item name before any state changes
-    final itemName = item.productName;
-    
     return Card(
-      key: ValueKey('${item.productId}-${item.quantity}'), // Key based on item state
+      key: ValueKey('${item.productId}-${item.quantity}'),
       margin: const EdgeInsets.only(bottom: 8),
       color: isDarkMode ? Colors.grey.shade800 : Colors.white,
       child: ListTile(
@@ -1921,9 +2518,8 @@ Widget _buildDesktopLayout(
                     size: 20
                   ),
                   onPressed: () {
-                    // Decrease quantity
                     if (item.quantity > 1) {
-                      updateCartState(() {  // Using the updateCartState callback
+                      updateCartState(() {
                         _cartItems[index] = TransactionItem(
                           productId: item.productId,
                           productName: item.productName,
@@ -1942,8 +2538,7 @@ Widget _buildDesktopLayout(
                         ),
                       );
                     } else {
-                      // Remove item if quantity is 1
-                      updateCartState(() {  // Using the updateCartState callback
+                      updateCartState(() {
                         _cartItems.removeAt(index);
                       });
                       
@@ -1965,7 +2560,6 @@ Widget _buildDesktopLayout(
                     size: 20
                   ),
                   onPressed: () {
-                    // Remove the entire item
                     updateCartState(() {
                       _cartItems.removeAt(index);
                     });

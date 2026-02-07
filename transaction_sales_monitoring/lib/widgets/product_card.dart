@@ -41,7 +41,7 @@ class ProductCard extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: _getCategoryGradient(product.categoryId),
+                    colors: _getCategoryGradient(product.category),
                   ),
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -49,8 +49,8 @@ class ProductCard extends StatelessWidget {
                   children: [
                     Center(
                       child: Icon(
-                        _getCategoryIcon(product.categoryId),
-                        color: _getCategoryColor(product.categoryId),
+                        _getCategoryIcon(product.category),
+                        color: _getCategoryColor(product.category),
                         size: Responsive.getIconSize(context, multiplier: 1.5),
                       ),
                     ),
@@ -113,7 +113,7 @@ class ProductCard extends StatelessWidget {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      product.categoryId,
+                      product.category,
                       style: TextStyle(
                         fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
                         color: Colors.grey,

@@ -1,4 +1,4 @@
-// lib/screens/inventory_monitoring.dart - UPDATED VERSION
+// lib/screens/inventory_monitoring.dart - FIXED VERSION
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -22,12 +22,35 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
   String _selectedCategory = 'All';
   String _selectedStatus = 'All';
   bool _showFilters = false;
-  bool _isLoadingCategories = false;
+  bool _isLoading = false;
+  bool _isInitialLoad = true;
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initial data load with delay to show skeleton
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        setState(() {
+          _isInitialLoad = false;
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _removeOverlay();
     super.dispose();
+  }
+
+  void _removeOverlay() {
+    if (_overlayEntry != null) {
+      _overlayEntry?.remove();
+      _overlayEntry = null;
+    }
   }
 
   Color _parseColor(String hexColor) {
@@ -46,6 +69,8 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
   }
 
   void _restockItem(InventoryItem item) {
+    _removeOverlay();
+    
     final primaryColor = getPrimaryColor();
     final quantityController = TextEditingController(text: item.reorderQuantity.toString());
     final unitCostController = TextEditingController(text: item.unitCost.toString());
@@ -122,6 +147,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
               }
               
               try {
+                setState(() => _isLoading = true);
                 await InventoryService.restockItem(
                   item.id, 
                   quantity,
@@ -143,6 +169,8 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                     backgroundColor: Colors.red,
                   ),
                 );
+              } finally {
+                setState(() => _isLoading = false);
               }
             },
             style: ElevatedButton.styleFrom(
@@ -156,6 +184,8 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
   }
 
   void _showItemDetails(InventoryItem item) {
+    _removeOverlay();
+    
     final primaryColor = getPrimaryColor();
     showDialog(
       context: context,
@@ -193,7 +223,10 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
             child: const Text('CLOSE'),
           ),
           ElevatedButton(
-            onPressed: () => _restockItem(item),
+            onPressed: () {
+              Navigator.pop(context);
+              _restockItem(item);
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: primaryColor,
             ),
@@ -232,6 +265,8 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
   }
 
   void _addItem() {
+    _removeOverlay();
+    
     final primaryColor = getPrimaryColor();
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
@@ -274,7 +309,10 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                         const Text('No inventory categories found. Please create categories first.'),
                         const SizedBox(height: 16),
                         ElevatedButton(
-                          onPressed: _openCategoryManagement,
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _openCategoryManagement();
+                          },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.orange,
                           ),
@@ -572,6 +610,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                   );
 
                   try {
+                    setState(() => _isLoading = true);
                     await InventoryService.createInventoryItem(newItem);
                     
                     Navigator.pop(context);
@@ -589,6 +628,8 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                         backgroundColor: Colors.red,
                       ),
                     );
+                  } finally {
+                    setState(() => _isLoading = false);
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -604,6 +645,8 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
   }
 
   void _openCategoryManagement() {
+    _removeOverlay();
+    
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -613,6 +656,8 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
   }
 
   void _editItem(InventoryItem item) {
+    _removeOverlay();
+    
     final primaryColor = getPrimaryColor();
     final nameController = TextEditingController(text: item.name);
     final descriptionController = TextEditingController(text: item.description ?? '');
@@ -927,6 +972,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                   );
 
                   try {
+                    setState(() => _isLoading = true);
                     await InventoryService.updateInventoryItem(updatedItem);
                     
                     Navigator.pop(context);
@@ -944,6 +990,8 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                         backgroundColor: Colors.red,
                       ),
                     );
+                  } finally {
+                    setState(() => _isLoading = false);
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -958,12 +1006,14 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
     );
   }
 
-  void _deleteItem(InventoryItem item) {
+  void _toggleItemStatus(InventoryItem item) {
+    _removeOverlay();
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Inventory Item'),
-        content: Text('Are you sure you want to delete "${item.name} (${item.categoryName})" from inventory?'),
+        title: Text(item.isActive ? 'Deactivate Item' : 'Activate Item'),
+        content: Text('Are you sure you want to ${item.isActive ? 'deactivate' : 'activate'} "${item.name}"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -972,31 +1022,198 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
           ElevatedButton(
             onPressed: () async {
               try {
-                await InventoryService.deleteInventoryItem(item.id);
+                setState(() => _isLoading = true);
+                final updatedItem = item.copyWith(
+                  isActive: !item.isActive,
+                  updatedAt: DateTime.now(),
+                );
+                
+                await InventoryService.updateInventoryItem(updatedItem);
                 
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('${item.name} (${item.categoryName}) removed from inventory'),
-                    backgroundColor: Colors.red,
+                    content: Text('Item ${item.isActive ? 'deactivated' : 'activated'} successfully'),
+                    backgroundColor: item.isActive ? Colors.orange : Colors.green,
                   ),
                 );
               } catch (e) {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Error deleting item: ${e.toString()}'),
+                    content: Text('Error updating item: ${e.toString()}'),
                     backgroundColor: Colors.red,
                   ),
                 );
+              } finally {
+                setState(() => _isLoading = false);
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
+              backgroundColor: item.isActive ? Colors.orange : Colors.green,
             ),
-            child: const Text('DELETE', style: TextStyle(color: Colors.white)),
+            child: Text(item.isActive ? 'DEACTIVATE' : 'ACTIVATE', style: const TextStyle(color: Colors.white)),
           ),
         ],
+      ),
+    );
+  }
+
+  // SKELETON LOADING WIDGETS
+  Widget _buildSkeletonStatCard(BuildContext context, {bool isDarkMode = false}) {
+    return Container(
+      padding: EdgeInsets.all(Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16) * 0.8),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+              shape: BoxShape.circle,
+            ),
+            child: Container(
+              width: Responsive.getIconSize(context, multiplier: 1.2),
+              height: Responsive.getIconSize(context, multiplier: 1.2),
+              decoration: BoxDecoration(
+                color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade400,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: 60,
+            height: 12,
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            width: 40,
+            height: 16,
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkeletonCard(BuildContext context, {double height = 150, bool isDarkMode = false}) {
+    return Container(
+      constraints: BoxConstraints(minHeight: height),
+      child: Card(
+        elevation: isDarkMode ? 2 : 3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDarkMode ? Colors.grey.shade800 : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: Responsive.getCardPadding(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 150,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ...List.generate(3, (index) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  width: double.infinity,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonTable(BuildContext context, {bool isDarkMode = false}) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 150),
+      child: Card(
+        elevation: isDarkMode ? 2 : 3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDarkMode ? Colors.grey.shade800 : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: Responsive.getCardPadding(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 200,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...List.generate(5, (rowIndex) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: List.generate(5, (colIndex) => Expanded(
+                    child: Container(
+                      height: 40,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  )),
+                ),
+              )),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1004,7 +1221,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
   @override
   Widget build(BuildContext context) {
     if (isLoadingSettings) {
-      return const Center(child: CircularProgressIndicator());
+      return _buildSkeletonScreen(context);
     }
     
     final isMobile = Responsive.isMobile(context);
@@ -1020,178 +1237,308 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
 
     return Scaffold(
       backgroundColor: backgroundColor,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            padding: padding,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: constraints.maxHeight,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Main Stats Grid
-                  StreamBuilder<List<InventoryItem>>(
-                    stream: InventoryService.getInventoryItems(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return Center(child: CircularProgressIndicator(color: primaryColor));
-                      }
-                      
-                      if (snapshot.hasError) {
-                        return Center(
-                          child: Text(
-                            'Error loading inventory: ${snapshot.error}',
-                            style: const TextStyle(color: Colors.red),
-                          ),
-                        );
-                      }
-                      
-                      final inventoryItems = snapshot.data ?? [];
-                      final itemsNeedingReorder = inventoryItems.where((item) => item.needsReorder).toList();
-                      final totalValue = inventoryItems.fold<double>(0, (sum, item) => sum + item.stockValue);
-                      
-                      return StreamBuilder<List<ProductCategory>>(
-                        stream: CategoryService.getCategoriesByTypeStream('inventory'),
-                        builder: (context, categorySnapshot) {
-                          final categories = categorySnapshot.data ?? [];
-                          
-                          return Responsive.buildResponsiveCardGrid(
-                            context: context,
-                            title: 'INVENTORY OVERVIEW',
-                            titleColor: primaryColor,
-                            centerTitle: true,
-                            cards: [
-                              _buildStatCard(
-                                'Total Items',
-                                '${inventoryItems.length}',
-                                Icons.inventory,
-                                Colors.blue,
-                                context,
-                                isDarkMode: isDarkMode,
-                                subtitle: 'Total inventory items',
-                              ),
-                              _buildStatCard(
-                                'Total Value',
-                                '₱${totalValue.toStringAsFixed(2)}',
-                                Icons.attach_money,
-                                Colors.green,
-                                context,
-                                isDarkMode: isDarkMode,
-                                subtitle: 'Total inventory worth',
-                              ),
-                              _buildStatCard(
-                                'Categories',
-                                '${categories.length}',
-                                Icons.category,
-                                Colors.orange,
-                                context,
-                                isDarkMode: isDarkMode,
-                                subtitle: 'Available categories',
-                              ),
-                              _buildStatCard(
-                                'Need Reorder',
-                                '${itemsNeedingReorder.length}',
-                                Icons.warning,
-                                Colors.red,
-                                context,
-                                isDarkMode: isDarkMode,
-                                subtitle: 'Items below minimum',
-                              ),
-                            ],
-                          );
-                        },
-                      );
-                    },
+      body: Stack(
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                padding: padding,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight,
                   ),
-
-                  const SizedBox(height: 16),
-
-                  // Filter Options Card
-                  Container(
-                    constraints: BoxConstraints(
-                      minHeight: isMobile ? 200 : 150,
-                    ),
-                    child: Card(
-                      elevation: isDarkMode ? 2 : 3,
-                      color: cardColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                          width: 1,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Main Stats Grid
+                      if (_isInitialLoad)
+                        _buildSkeletonStatsGrid(context, isDarkMode: isDarkMode)
+                      else
+                        StreamBuilder<List<InventoryItem>>(
+                          stream: InventoryService.getInventoryItems(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return _buildSkeletonStatsGrid(context, isDarkMode: isDarkMode);
+                            }
+                            
+                            if (snapshot.hasError) {
+                              return Center(
+                                child: Text(
+                                  'Error loading inventory: ${snapshot.error}',
+                                  style: const TextStyle(color: Colors.red),
+                                ),
+                              );
+                            }
+                            
+                            final inventoryItems = snapshot.data ?? [];
+                            final itemsNeedingReorder = inventoryItems.where((item) => item.needsReorder).toList();
+                            final totalValue = inventoryItems.fold<double>(0, (sum, item) => sum + item.stockValue);
+                            
+                            return StreamBuilder<List<ProductCategory>>(
+                              stream: CategoryService.getCategoriesByTypeStream('inventory'),
+                              builder: (context, categorySnapshot) {
+                                final categories = categorySnapshot.data ?? [];
+                                
+                                return Responsive.buildResponsiveCardGrid(
+                                  context: context,
+                                  title: 'INVENTORY OVERVIEW',
+                                  titleColor: primaryColor,
+                                  centerTitle: true,
+                                  cards: [
+                                    _buildStatCard(
+                                      'Total Items',
+                                      '${inventoryItems.length}',
+                                      Icons.inventory,
+                                      Colors.blue,
+                                      context,
+                                      isDarkMode: isDarkMode,
+                                      subtitle: 'Total inventory items',
+                                    ),
+                                    _buildStatCard(
+                                      'Total Value',
+                                      '₱${totalValue.toStringAsFixed(2)}',
+                                      Icons.attach_money,
+                                      Colors.green,
+                                      context,
+                                      isDarkMode: isDarkMode,
+                                      subtitle: 'Total inventory worth',
+                                    ),
+                                    _buildStatCard(
+                                      'Categories',
+                                      '${categories.length}',
+                                      Icons.category,
+                                      Colors.orange,
+                                      context,
+                                      isDarkMode: isDarkMode,
+                                      subtitle: 'Available categories',
+                                    ),
+                                    _buildStatCard(
+                                      'Need Reorder',
+                                      '${itemsNeedingReorder.length}',
+                                      Icons.warning,
+                                      Colors.red,
+                                      context,
+                                      isDarkMode: isDarkMode,
+                                      subtitle: 'Items below minimum',
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
                         ),
-                      ),
-                      child: Padding(
-                        padding: Responsive.getCardPadding(context),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'FILTER OPTIONS',
-                              style: TextStyle(
-                                fontSize: Responsive.getSubtitleFontSize(context),
-                                fontWeight: FontWeight.bold,
-                                color: primaryColor,
+
+                      const SizedBox(height: 16),
+
+                      // Filter Options Card
+                      if (_isInitialLoad)
+                        _buildSkeletonCard(context, height: isMobile ? 200 : 150, isDarkMode: isDarkMode)
+                      else
+                        Container(
+                          constraints: BoxConstraints(
+                            minHeight: isMobile ? 200 : 150,
+                          ),
+                          child: Card(
+                            elevation: isDarkMode ? 2 : 3,
+                            color: cardColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                width: 1,
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: _searchController,
-                              decoration: InputDecoration(
-                                hintText: 'Search items by name or category...',
-                                hintStyle: TextStyle(color: mutedTextColor),
-                                prefixIcon: Icon(Icons.search, color: primaryColor),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: BorderSide(color: primaryColor),
-                                ),
-                                suffixIcon: _searchController.text.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(Icons.clear),
-                                        onPressed: () {
-                                          setState(() {
-                                            _searchController.clear();
-                                          });
-                                        },
-                                      )
-                                    : null,
-                              ),
-                              style: TextStyle(color: textColor),
-                              onChanged: (value) => setState(() {}),
-                            ),
-                            if ((!isMobile || _showFilters))
-                              Column(
+                            child: Padding(
+                              padding: Responsive.getCardPadding(context),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  Text(
+                                    'FILTER OPTIONS',
+                                    style: TextStyle(
+                                      fontSize: Responsive.getSubtitleFontSize(context),
+                                      fontWeight: FontWeight.bold,
+                                      color: primaryColor,
+                                    ),
+                                  ),
                                   const SizedBox(height: 12),
-                                  if (!isMobile)
-                                    Row(
+                                  TextField(
+                                    controller: _searchController,
+                                    decoration: InputDecoration(
+                                      hintText: 'Search items by name or category...',
+                                      hintStyle: TextStyle(color: mutedTextColor),
+                                      prefixIcon: Icon(Icons.search, color: primaryColor),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(
+                                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                        ),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(color: primaryColor),
+                                      ),
+                                      suffixIcon: _searchController.text.isNotEmpty
+                                          ? IconButton(
+                                              icon: const Icon(Icons.clear),
+                                              onPressed: () {
+                                                setState(() {
+                                                  _searchController.clear();
+                                                });
+                                              },
+                                            )
+                                          : null,
+                                    ),
+                                    style: TextStyle(color: textColor),
+                                    onChanged: (value) => setState(() {}),
+                                  ),
+                                  if ((!isMobile || _showFilters))
+                                    Column(
                                       children: [
-                                        Expanded(
-                                          child: StreamBuilder<List<InventoryItem>>(
-                                            stream: InventoryService.getInventoryItems(),
-                                            builder: (context, snapshot) {
-                                              final items = snapshot.data ?? [];
-                                              final categories = items.map((item) => item.categoryName).toSet().toList();
-                                              
-                                              return DropdownButtonFormField<String>(
-                                                value: _selectedCategory,
+                                        const SizedBox(height: 12),
+                                        if (!isMobile)
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: StreamBuilder<List<InventoryItem>>(
+                                                  stream: InventoryService.getInventoryItems(),
+                                                  builder: (context, snapshot) {
+                                                    final items = snapshot.data ?? [];
+                                                    final categories = items.map((item) => item.categoryName).toSet().toList();
+                                                    
+                                                    return DropdownButtonFormField<String>(
+                                                      value: _selectedCategory,
+                                                      dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                                                      style: TextStyle(color: textColor),
+                                                      decoration: InputDecoration(
+                                                        labelText: 'Category',
+                                                        labelStyle: TextStyle(color: mutedTextColor),
+                                                        border: OutlineInputBorder(
+                                                          borderSide: BorderSide(
+                                                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                          ),
+                                                        ),
+                                                        enabledBorder: OutlineInputBorder(
+                                                          borderSide: BorderSide(
+                                                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                          ),
+                                                        ),
+                                                        focusedBorder: OutlineInputBorder(
+                                                          borderSide: BorderSide(color: primaryColor),
+                                                        ),
+                                                        prefixIcon: Icon(Icons.category, color: primaryColor),
+                                                      ),
+                                                      items: ['All', ...categories]
+                                                          .map((category) => DropdownMenuItem(
+                                                                value: category,
+                                                                child: Text(category, style: TextStyle(color: textColor)),
+                                                              ))
+                                                          .toList(),
+                                                      onChanged: (value) {
+                                                        setState(() {
+                                                          _selectedCategory = value!;
+                                                        });
+                                                      },
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                              const SizedBox(width: 16),
+                                              Expanded(
+                                                child: DropdownButtonFormField<String>(
+                                                  value: _selectedStatus,
+                                                  dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                                                  style: TextStyle(color: textColor),
+                                                  decoration: InputDecoration(
+                                                    labelText: 'Status',
+                                                    labelStyle: TextStyle(color: mutedTextColor),
+                                                    border: OutlineInputBorder(
+                                                      borderSide: BorderSide(
+                                                        color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                      ),
+                                                    ),
+                                                    enabledBorder: OutlineInputBorder(
+                                                      borderSide: BorderSide(
+                                                        color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                      ),
+                                                    ),
+                                                    focusedBorder: OutlineInputBorder(
+                                                      borderSide: BorderSide(color: primaryColor),
+                                                    ),
+                                                    prefixIcon: Icon(Icons.info, color: primaryColor),
+                                                  ),
+                                                  items: ['All', 'In Stock', 'Low Stock', 'Out of Stock']
+                                                      .map((status) => DropdownMenuItem(
+                                                            value: status,
+                                                            child: Text(status, style: TextStyle(color: textColor)),
+                                                          ))
+                                                      .toList(),
+                                                  onChanged: (value) {
+                                                    setState(() {
+                                                      _selectedStatus = value!;
+                                                    });
+                                                  },
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        else
+                                          Column(
+                                            children: [
+                                              StreamBuilder<List<InventoryItem>>(
+                                                stream: InventoryService.getInventoryItems(),
+                                                builder: (context, snapshot) {
+                                                  final items = snapshot.data ?? [];
+                                                  final categories = items.map((item) => item.categoryName).toSet().toList();
+                                                  
+                                                  return DropdownButtonFormField<String>(
+                                                    value: _selectedCategory,
+                                                    dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                                                    style: TextStyle(color: textColor),
+                                                    decoration: InputDecoration(
+                                                      labelText: 'Category',
+                                                      labelStyle: TextStyle(color: mutedTextColor),
+                                                      border: OutlineInputBorder(
+                                                        borderSide: BorderSide(
+                                                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                        ),
+                                                      ),
+                                                      enabledBorder: OutlineInputBorder(
+                                                        borderSide: BorderSide(
+                                                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                        ),
+                                                      ),
+                                                      focusedBorder: OutlineInputBorder(
+                                                        borderSide: BorderSide(color: primaryColor),
+                                                      ),
+                                                      prefixIcon: Icon(Icons.category, color: primaryColor),
+                                                    ),
+                                                    items: ['All', ...categories]
+                                                        .map((category) => DropdownMenuItem(
+                                                              value: category,
+                                                              child: Text(category, style: TextStyle(color: textColor)),
+                                                            ))
+                                                        .toList(),
+                                                    onChanged: (value) {
+                                                      setState(() {
+                                                        _selectedCategory = value!;
+                                                      });
+                                                    },
+                                                  );
+                                                },
+                                              ),
+                                              const SizedBox(height: 12),
+                                              DropdownButtonFormField<String>(
+                                                value: _selectedStatus,
                                                 dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                                 style: TextStyle(color: textColor),
                                                 decoration: InputDecoration(
-                                                  labelText: 'Category',
+                                                  labelText: 'Status',
                                                   labelStyle: TextStyle(color: mutedTextColor),
                                                   border: OutlineInputBorder(
                                                     borderSide: BorderSide(
@@ -1206,303 +1553,551 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                   focusedBorder: OutlineInputBorder(
                                                     borderSide: BorderSide(color: primaryColor),
                                                   ),
-                                                  prefixIcon: Icon(Icons.category, color: primaryColor),
+                                                  prefixIcon: Icon(Icons.info, color: primaryColor),
                                                 ),
-                                                items: ['All', ...categories]
-                                                    .map((category) => DropdownMenuItem(
-                                                          value: category,
-                                                          child: Text(category, style: TextStyle(color: textColor)),
+                                                items: ['All', 'In Stock', 'Low Stock', 'Out of Stock']
+                                                    .map((status) => DropdownMenuItem(
+                                                          value: status,
+                                                          child: Text(status, style: TextStyle(color: textColor)),
                                                         ))
                                                     .toList(),
                                                 onChanged: (value) {
                                                   setState(() {
-                                                    _selectedCategory = value!;
+                                                    _selectedStatus = value!;
                                                   });
                                                 },
-                                              );
-                                            },
+                                              ),
+                                            ],
                                           ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: DropdownButtonFormField<String>(
-                                            value: _selectedStatus,
-                                            dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
-                                            style: TextStyle(color: textColor),
-                                            decoration: InputDecoration(
-                                              labelText: 'Status',
-                                              labelStyle: TextStyle(color: mutedTextColor),
-                                              border: OutlineInputBorder(
-                                                borderSide: BorderSide(
-                                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                                ),
-                                              ),
-                                              enabledBorder: OutlineInputBorder(
-                                                borderSide: BorderSide(
-                                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                                ),
-                                              ),
-                                              focusedBorder: OutlineInputBorder(
-                                                borderSide: BorderSide(color: primaryColor),
-                                              ),
-                                              prefixIcon: Icon(Icons.info, color: primaryColor),
-                                            ),
-                                            items: ['All', 'In Stock', 'Low Stock', 'Out of Stock']
-                                                .map((status) => DropdownMenuItem(
-                                                      value: status,
-                                                      child: Text(status, style: TextStyle(color: textColor)),
-                                                    ))
-                                                .toList(),
-                                            onChanged: (value) {
-                                              setState(() {
-                                                _selectedStatus = value!;
-                                              });
-                                            },
-                                          ),
-                                        ),
                                       ],
-                                    )
-                                  else
-                                    Column(
+                                    ),
+                                  if (isMobile)
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
                                       children: [
-                                        StreamBuilder<List<InventoryItem>>(
-                                          stream: InventoryService.getInventoryItems(),
-                                          builder: (context, snapshot) {
-                                            final items = snapshot.data ?? [];
-                                            final categories = items.map((item) => item.categoryName).toSet().toList();
-                                            
-                                            return DropdownButtonFormField<String>(
-                                              value: _selectedCategory,
-                                              dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
-                                              style: TextStyle(color: textColor),
-                                              decoration: InputDecoration(
-                                                labelText: 'Category',
-                                                labelStyle: TextStyle(color: mutedTextColor),
-                                                border: OutlineInputBorder(
-                                                  borderSide: BorderSide(
-                                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                                  ),
-                                                ),
-                                                enabledBorder: OutlineInputBorder(
-                                                  borderSide: BorderSide(
-                                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                                  ),
-                                                ),
-                                                focusedBorder: OutlineInputBorder(
-                                                  borderSide: BorderSide(color: primaryColor),
-                                                ),
-                                                prefixIcon: Icon(Icons.category, color: primaryColor),
-                                              ),
-                                              items: ['All', ...categories]
-                                                  .map((category) => DropdownMenuItem(
-                                                        value: category,
-                                                        child: Text(category, style: TextStyle(color: textColor)),
-                                                      ))
-                                                  .toList(),
-                                              onChanged: (value) {
-                                                setState(() {
-                                                  _selectedCategory = value!;
-                                                });
-                                              },
-                                            );
-                                          },
-                                        ),
-                                        const SizedBox(height: 12),
-                                        DropdownButtonFormField<String>(
-                                          value: _selectedStatus,
-                                          dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
-                                          style: TextStyle(color: textColor),
-                                          decoration: InputDecoration(
-                                            labelText: 'Status',
-                                            labelStyle: TextStyle(color: mutedTextColor),
-                                            border: OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                              ),
-                                            ),
-                                            enabledBorder: OutlineInputBorder(
-                                              borderSide: BorderSide(
-                                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                              ),
-                                            ),
-                                            focusedBorder: OutlineInputBorder(
-                                              borderSide: BorderSide(color: primaryColor),
-                                            ),
-                                            prefixIcon: Icon(Icons.info, color: primaryColor),
-                                          ),
-                                          items: ['All', 'In Stock', 'Low Stock', 'Out of Stock']
-                                              .map((status) => DropdownMenuItem(
-                                                    value: status,
-                                                    child: Text(status, style: TextStyle(color: textColor)),
-                                                  ))
-                                              .toList(),
-                                          onChanged: (value) {
+                                        TextButton(
+                                          onPressed: () {
                                             setState(() {
-                                              _selectedStatus = value!;
+                                              _showFilters = !_showFilters;
                                             });
                                           },
+                                          child: Text(
+                                            _showFilters ? 'Hide Filters' : 'Show Filters',
+                                            style: TextStyle(color: primaryColor),
+                                          ),
                                         ),
                                       ],
                                     ),
                                 ],
-                              ),
-                            if (isMobile)
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _showFilters = !_showFilters;
-                                      });
-                                    },
-                                    child: Text(
-                                      _showFilters ? 'Hide Filters' : 'Show Filters',
-                                      style: TextStyle(color: primaryColor),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Low Stock Alert Card
-                  StreamBuilder<List<InventoryItem>>(
-                    stream: InventoryService.getLowStockItems(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const SizedBox.shrink();
-                      }
-                      
-                      final lowStockItems = snapshot.data ?? [];
-                      
-                      if (lowStockItems.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      
-                      return Column(
-                        children: [
-                          Container(
-                            constraints: const BoxConstraints(
-                              minHeight: 120,
-                            ),
-                            child: Card(
-                              elevation: isDarkMode ? 2 : 3,
-                              color: Colors.orange.shade50.withOpacity(isDarkMode ? 0.2 : 1),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: BorderSide(
-                                  color: isDarkMode ? Colors.orange.shade700 : Colors.orange.shade300,
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: Padding(
-                                padding: Responsive.getCardPadding(context),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(6),
-                                          decoration: BoxDecoration(
-                                            color: Colors.orange.withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: const Icon(Icons.warning, color: Colors.orange, size: 20),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            'LOW STOCK ALERT',
-                                            style: TextStyle(
-                                              fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.orange,
-                                            ),
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      '${lowStockItems.length} items need immediate attention:',
-                                      style: TextStyle(
-                                        fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
-                                        color: isDarkMode ? Colors.grey.shade300 : Colors.grey.shade700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children: lowStockItems.map((item) => InkWell(
-                                        onTap: () => _showItemDetails(item),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: isDarkMode ? Colors.orange.shade800 : Colors.orange.shade100,
-                                            borderRadius: BorderRadius.circular(20),
-                                            border: Border.all(
-                                              color: isDarkMode ? Colors.orange.shade700 : Colors.orange.shade300,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            '${item.name} (${item.categoryName})',
-                                            style: TextStyle(
-                                              color: isDarkMode ? Colors.white : Colors.orange.shade800,
-                                              fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                      )).toList(),
-                                    ),
-                                  ],
-                                ),
                               ),
                             ),
                           ),
-                          const SizedBox(height: 16),
-                        ],
-                      );
-                    },
-                  ),
-
-                  // Inventory Items Card
-                  Container(
-                    constraints: const BoxConstraints(
-                      minHeight: 200,
-                    ),
-                    child: Card(
-                      elevation: isDarkMode ? 2 : 3,
-                      color: cardColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                          width: 1,
                         ),
-                      ),
-                      child: Padding(
-                        padding: Responsive.getCardPadding(context),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
+                      const SizedBox(height: 16),
+
+                      // Low Stock Alert Card
+                      if (!_isInitialLoad)
+                        StreamBuilder<List<InventoryItem>>(
+                          stream: InventoryService.getLowStockItems(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return _buildSkeletonCard(context, height: 120, isDarkMode: isDarkMode);
+                            }
+                            
+                            final lowStockItems = snapshot.data ?? [];
+                            
+                            if (lowStockItems.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            
+                            return Column(
                               children: [
-                                Flexible(
-                                  child: Row(
+                                Container(
+                                  constraints: const BoxConstraints(
+                                    minHeight: 120,
+                                  ),
+                                  child: Card(
+                                    elevation: isDarkMode ? 2 : 3,
+                                    color: Colors.orange.shade50.withOpacity(isDarkMode ? 0.2 : 1),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      side: BorderSide(
+                                        color: isDarkMode ? Colors.orange.shade700 : Colors.orange.shade300,
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: Padding(
+                                      padding: Responsive.getCardPadding(context),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.all(6),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.orange.withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: const Icon(Icons.warning, color: Colors.orange, size: 20),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  'LOW STOCK ALERT',
+                                                  style: TextStyle(
+                                                    fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18),
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.orange,
+                                                  ),
+                                                  maxLines: 2,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            '${lowStockItems.length} items need immediate attention:',
+                                            style: TextStyle(
+                                              fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
+                                              color: isDarkMode ? Colors.grey.shade300 : Colors.grey.shade700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            children: lowStockItems.map((item) => InkWell(
+                                              onTap: () => _showItemDetails(item),
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                decoration: BoxDecoration(
+                                                  color: isDarkMode ? Colors.orange.shade800 : Colors.orange.shade100,
+                                                  borderRadius: BorderRadius.circular(20),
+                                                  border: Border.all(
+                                                    color: isDarkMode ? Colors.orange.shade700 : Colors.orange.shade300,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  '${item.name} (${item.categoryName})',
+                                                  style: TextStyle(
+                                                    color: isDarkMode ? Colors.white : Colors.orange.shade800,
+                                                    fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            )).toList(),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+                            );
+                          },
+                        ),
+
+                      // Inventory Items Card
+                      if (_isInitialLoad)
+                        _buildSkeletonTable(context, isDarkMode: isDarkMode)
+                      else
+                        Container(
+                          constraints: const BoxConstraints(
+                            minHeight: 200,
+                          ),
+                          child: Card(
+                            elevation: isDarkMode ? 2 : 3,
+                            color: cardColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                width: 1,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: Responsive.getCardPadding(context),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Flexible(
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: primaryColor.withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Icon(Icons.inventory, color: primaryColor, size: 20),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Flexible(
+                                              child: Text(
+                                                'INVENTORY ITEMS',
+                                                style: TextStyle(
+                                                  fontSize: Responsive.getTitleFontSize(context),
+                                                  fontWeight: FontWeight.bold,
+                                                  color: primaryColor,
+                                                ),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Responsive.getOrientationFlexLayout(
+                                        context,
+                                        children: [
+                                          // Manage Categories Button
+                                          ElevatedButton.icon(
+                                            onPressed: _openCategoryManagement,
+                                            icon: Icon(Icons.category, 
+                                                size: Responsive.getIconSize(context, multiplier: 0.8)),
+                                            label: Text(
+                                              'MANAGE CATEGORIES',
+                                              style: TextStyle(
+                                                fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14),
+                                              ),
+                                            ),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.orange,
+                                              foregroundColor: Colors.white,
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
+                                                vertical: Responsive.getButtonHeight(context) * 0.5,
+                                              ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          // Add Item Button
+                                          ElevatedButton.icon(
+                                            onPressed: _addItem,
+                                            icon: Icon(Icons.add, 
+                                                size: Responsive.getIconSize(context, multiplier: 0.8)),
+                                            label: Text(
+                                              'ADD ITEM',
+                                              style: TextStyle(
+                                                fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14),
+                                              ),
+                                            ),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: primaryColor,
+                                              foregroundColor: Colors.white,
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
+                                                vertical: Responsive.getButtonHeight(context) * 0.5,
+                                              ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  
+                                  StreamBuilder<List<InventoryItem>>(
+                                    stream: InventoryService.getInventoryItems(),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState == ConnectionState.waiting) {
+                                        return _buildSkeletonTableContent(context, isDarkMode: isDarkMode);
+                                      }
+                                      
+                                      if (snapshot.hasError) {
+                                        return Center(
+                                          child: Text(
+                                            'Error loading items: ${snapshot.error}',
+                                            style: const TextStyle(color: Colors.red),
+                                          ),
+                                        );
+                                      }
+                                      
+                                      final allItems = snapshot.data ?? [];
+                                      
+                                      // Filter items
+                                      final filteredItems = allItems.where((item) {
+                                        final matchesCategory = _selectedCategory == 'All' || item.categoryName == _selectedCategory;
+                                        final matchesStatus = _selectedStatus == 'All' || item.status == _selectedStatus;
+                                        final matchesSearch = _searchController.text.isEmpty ||
+                                            item.name.toLowerCase().contains(_searchController.text.toLowerCase()) ||
+                                            item.categoryName.toLowerCase().contains(_searchController.text.toLowerCase()) ||
+                                            (item.description ?? '').toLowerCase().contains(_searchController.text.toLowerCase());
+                                        
+                                        return matchesCategory && matchesStatus && matchesSearch;
+                                      }).toList();
+                                      
+                                      if (filteredItems.isEmpty) {
+                                        return Container(
+                                          constraints: const BoxConstraints(
+                                            minHeight: 150,
+                                          ),
+                                          child: Center(
+                                            child: Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.inventory,
+                                                  size: Responsive.getIconSize(context, multiplier: 2.5),
+                                                  color: mutedTextColor,
+                                                ),
+                                                SizedBox(height: Responsive.getSpacing(context).height),
+                                                Text(
+                                                  'No items found',
+                                                  style: TextStyle(
+                                                    fontSize: Responsive.getBodyFontSize(context),
+                                                    color: mutedTextColor,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  'Add items or check your filters',
+                                                  style: TextStyle(
+                                                    fontSize: Responsive.getBodyFontSize(context) * 0.9,
+                                                    color: mutedTextColor,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                      
+                                      return isMobile
+                                          ? ListView.builder(
+                                              shrinkWrap: true,
+                                              physics: const NeverScrollableScrollPhysics(),
+                                              itemCount: filteredItems.length,
+                                              itemBuilder: (context, index) {
+                                                final item = filteredItems[index];
+                                                return _buildInventoryCardMobile(item, context, isDarkMode: isDarkMode);
+                                              },
+                                            )
+                                          : Container(
+                                              constraints: const BoxConstraints(
+                                                minHeight: 150,
+                                              ),
+                                              child: SingleChildScrollView(
+                                                scrollDirection: Axis.horizontal,
+                                                child: ConstrainedBox(
+                                                  constraints: BoxConstraints(
+                                                    minWidth: MediaQuery.of(context).size.width - Responsive.getPaddingSize(context) * 2,
+                                                  ),
+                                                  child: DataTable(
+                                                    headingRowHeight: Responsive.getDataTableRowHeight(context),
+                                                    dataRowHeight: Responsive.getDataTableRowHeight(context),
+                                                    headingTextStyle: TextStyle(
+                                                      fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 13, desktop: 14),
+                                                      fontWeight: FontWeight.bold,
+                                                      color: primaryColor,
+                                                    ),
+                                                    columns: const [
+                                                      DataColumn(label: Text('Item')),
+                                                      DataColumn(label: Text('Category')),
+                                                      DataColumn(label: Text('Current Stock')),
+                                                      DataColumn(label: Text('Min Stock')),
+                                                      DataColumn(label: Text('Unit Cost')),
+                                                      DataColumn(label: Text('Total Value')),
+                                                      DataColumn(label: Text('Status')),
+                                                      DataColumn(label: Text('Actions')),
+                                                    ],
+                                                    rows: filteredItems.map((item) {
+                                                      return DataRow(
+                                                        cells: [
+                                                          DataCell(
+                                                            Container(
+                                                              constraints: BoxConstraints(maxWidth: Responsive.width(context) * 0.15),
+                                                              child: Column(
+                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                                children: [
+                                                                  Text(
+                                                                    item.name,
+                                                                    style: TextStyle(
+                                                                      fontWeight: FontWeight.bold,
+                                                                      color: textColor,
+                                                                    ),
+                                                                    maxLines: 2,
+                                                                    overflow: TextOverflow.ellipsis,
+                                                                  ),
+                                                                  if (item.description != null && item.description!.isNotEmpty)
+                                                                    Text(
+                                                                      item.description!,
+                                                                      style: TextStyle(
+                                                                        fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
+                                                                        color: mutedTextColor,
+                                                                      ),
+                                                                      maxLines: 1,
+                                                                      overflow: TextOverflow.ellipsis,
+                                                                    ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          DataCell(
+                                                            Container(
+                                                              padding: EdgeInsets.symmetric(
+                                                                horizontal: Responsive.getFontSize(context, mobile: 6, tablet: 8, desktop: 10),
+                                                                vertical: Responsive.getFontSize(context, mobile: 3, tablet: 4, desktop: 5),
+                                                              ),
+                                                              decoration: BoxDecoration(
+                                                                color: _parseColor(item.color).withOpacity(0.1),
+                                                                borderRadius: BorderRadius.circular(4),
+                                                                border: Border.all(
+                                                                  color: _parseColor(item.color).withOpacity(0.3),
+                                                                ),
+                                                              ),
+                                                              child: Text(
+                                                                item.categoryName,
+                                                                style: TextStyle(
+                                                                  fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
+                                                                  fontWeight: FontWeight.bold,
+                                                                  color: _parseColor(item.color),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          DataCell(
+                                                            Column(
+                                                              mainAxisAlignment: MainAxisAlignment.center,
+                                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                                              children: [
+                                                                Text(
+                                                                  '${item.currentStock} ${item.unit}',
+                                                                  style: TextStyle(
+                                                                    fontWeight: FontWeight.bold,
+                                                                    color: item.needsReorder ? Colors.red : Colors.green,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          DataCell(
+                                                            Text(
+                                                              '${item.minimumStock} ${item.unit}',
+                                                              style: TextStyle(color: textColor),
+                                                            ),
+                                                          ),
+                                                          DataCell(
+                                                            Text(
+                                                              '₱${item.unitCost.toStringAsFixed(2)}',
+                                                              style: TextStyle(
+                                                                fontWeight: FontWeight.bold,
+                                                                color: primaryColor,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          DataCell(
+                                                            Text(
+                                                              '₱${item.stockValue.toStringAsFixed(2)}',
+                                                              style: TextStyle(
+                                                                fontWeight: FontWeight.bold,
+                                                                color: primaryColor,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          DataCell(
+                                                            Container(
+                                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                              decoration: BoxDecoration(
+                                                                color: _getStatusColor(item.status).withOpacity(0.1),
+                                                                borderRadius: BorderRadius.circular(20),
+                                                                border: Border.all(
+                                                                  color: _getStatusColor(item.status).withOpacity(0.3),
+                                                                ),
+                                                              ),
+                                                              child: Text(
+                                                                item.status,
+                                                                style: TextStyle(
+                                                                  fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
+                                                                  fontWeight: FontWeight.bold,
+                                                                  color: _getStatusColor(item.status),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          DataCell(
+                                                            Row(
+                                                              children: [
+                                                                IconButton(
+                                                                  icon: Icon(Icons.restore, size: Responsive.getIconSize(context, multiplier: 0.8)),
+                                                                  color: Colors.blue,
+                                                                  onPressed: () => _restockItem(item),
+                                                                  tooltip: 'Restock',
+                                                                ),
+                                                                IconButton(
+                                                                  icon: Icon(Icons.edit, size: Responsive.getIconSize(context, multiplier: 0.8)),
+                                                                  color: Colors.green,
+                                                                  onPressed: () => _editItem(item),
+                                                                  tooltip: 'Edit',
+                                                                ),
+                                                                IconButton(
+                                                                  icon: Icon(Icons.power_settings_new, size: Responsive.getIconSize(context, multiplier: 0.8)),
+                                                                  color: item.isActive ? Colors.orange : Colors.green,
+                                                                  onPressed: () => _toggleItemStatus(item),
+                                                                  tooltip: item.isActive ? 'Deactivate' : 'Activate',
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      );
+                                                    }).toList(),
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      SizedBox(height: Responsive.getLargeSpacing(context).height),
+
+                      // Categories Summary Card
+                      if (_isInitialLoad)
+                        _buildSkeletonCard(context, height: 150, isDarkMode: isDarkMode)
+                      else
+                        Container(
+                          constraints: const BoxConstraints(
+                            minHeight: 150,
+                          ),
+                          child: Card(
+                            elevation: isDarkMode ? 2 : 3,
+                            color: cardColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                width: 1,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: Responsive.getCardPadding(context),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
                                     children: [
                                       Container(
                                         padding: const EdgeInsets.all(6),
@@ -1510,12 +2105,12 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                           color: primaryColor.withOpacity(0.1),
                                           borderRadius: BorderRadius.circular(8),
                                         ),
-                                        child: Icon(Icons.inventory, color: primaryColor, size: 20),
+                                        child: Icon(Icons.category, color: primaryColor, size: 20),
                                       ),
                                       const SizedBox(width: 8),
-                                      Flexible(
+                                      Expanded(
                                         child: Text(
-                                          'INVENTORY ITEMS',
+                                          'INVENTORY CATEGORIES',
                                           style: TextStyle(
                                             fontSize: Responsive.getTitleFontSize(context),
                                             fontWeight: FontWeight.bold,
@@ -1527,594 +2122,347 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                       ),
                                     ],
                                   ),
-                                ),
-                                Responsive.getOrientationFlexLayout(
-                                  context,
-                                  children: [
-                                    // Manage Categories Button
-                                    ElevatedButton.icon(
-                                      onPressed: _openCategoryManagement,
-                                      icon: Icon(Icons.category, 
-                                          size: Responsive.getIconSize(context, multiplier: 0.8)),
-                                      label: Text(
-                                        'MANAGE CATEGORIES',
-                                        style: TextStyle(
-                                          fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14),
-                                        ),
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.orange,
-                                        foregroundColor: Colors.white,
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
-                                          vertical: Responsive.getButtonHeight(context) * 0.5,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    // Add Item Button
-                                    ElevatedButton.icon(
-                                      onPressed: _addItem,
-                                      icon: Icon(Icons.add, 
-                                          size: Responsive.getIconSize(context, multiplier: 0.8)),
-                                      label: Text(
-                                        'ADD ITEM',
-                                        style: TextStyle(
-                                          fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 12, desktop: 14),
-                                        ),
-                                      ),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: primaryColor,
-                                        foregroundColor: Colors.white,
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16),
-                                          vertical: Responsive.getButtonHeight(context) * 0.5,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            
-                            StreamBuilder<List<InventoryItem>>(
-                              stream: InventoryService.getInventoryItems(),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState == ConnectionState.waiting) {
-                                  return const Center(child: CircularProgressIndicator());
-                                }
-                                
-                                if (snapshot.hasError) {
-                                  return Center(
-                                    child: Text(
-                                      'Error loading items: ${snapshot.error}',
-                                      style: const TextStyle(color: Colors.red),
-                                    ),
-                                  );
-                                }
-                                
-                                final allItems = snapshot.data ?? [];
-                                
-                                // Filter items
-                                final filteredItems = allItems.where((item) {
-                                  final matchesCategory = _selectedCategory == 'All' || item.categoryName == _selectedCategory;
-                                  final matchesStatus = _selectedStatus == 'All' || item.status == _selectedStatus;
-                                  final matchesSearch = _searchController.text.isEmpty ||
-                                      item.name.toLowerCase().contains(_searchController.text.toLowerCase()) ||
-                                      item.categoryName.toLowerCase().contains(_searchController.text.toLowerCase()) ||
-                                      (item.description ?? '').toLowerCase().contains(_searchController.text.toLowerCase());
+                                  SizedBox(height: Responsive.getSpacing(context).height),
                                   
-                                  return matchesCategory && matchesStatus && matchesSearch;
-                                }).toList();
-                                
-                                if (filteredItems.isEmpty) {
-                                  return Container(
-                                    constraints: const BoxConstraints(
-                                      minHeight: 150,
-                                    ),
-                                    child: Center(
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            Icons.inventory,
-                                            size: Responsive.getIconSize(context, multiplier: 2.5),
-                                            color: mutedTextColor,
-                                          ),
-                                          SizedBox(height: Responsive.getSpacing(context).height),
-                                          Text(
-                                            'No items found',
-                                            style: TextStyle(
-                                              fontSize: Responsive.getBodyFontSize(context),
-                                              color: mutedTextColor,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Add items or check your filters',
-                                            style: TextStyle(
-                                              fontSize: Responsive.getBodyFontSize(context) * 0.9,
-                                              color: mutedTextColor,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }
-                                
-                                return isMobile
-                                    ? ListView.builder(
-                                        shrinkWrap: true,
-                                        physics: const NeverScrollableScrollPhysics(),
-                                        itemCount: filteredItems.length,
-                                        itemBuilder: (context, index) {
-                                          final item = filteredItems[index];
-                                          return _buildInventoryCardMobile(item, context, isDarkMode: isDarkMode);
-                                        },
-                                      )
-                                    : Container(
-                                        constraints: const BoxConstraints(
-                                          minHeight: 150,
-                                        ),
-                                        child: SingleChildScrollView(
-                                          scrollDirection: Axis.horizontal,
-                                          child: ConstrainedBox(
-                                            constraints: BoxConstraints(
-                                              minWidth: MediaQuery.of(context).size.width - Responsive.getPaddingSize(context) * 2,
-                                            ),
-                                            child: DataTable(
-                                              headingRowHeight: Responsive.getDataTableRowHeight(context),
-                                              dataRowHeight: Responsive.getDataTableRowHeight(context),
-                                              headingTextStyle: TextStyle(
-                                                fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 13, desktop: 14),
-                                                fontWeight: FontWeight.bold,
-                                                color: primaryColor,
+                                  StreamBuilder<List<ProductCategory>>(
+                                    stream: CategoryService.getCategoriesByTypeStream('inventory'),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState == ConnectionState.waiting) {
+                                        return _buildSkeletonTableContent(context, isDarkMode: isDarkMode, rowCount: 3);
+                                      }
+                                      
+                                      final categories = snapshot.data ?? [];
+                                      
+                                      return StreamBuilder<List<InventoryItem>>(
+                                        stream: InventoryService.getInventoryItems(),
+                                        builder: (context, itemsSnapshot) {
+                                          final items = itemsSnapshot.data ?? [];
+                                          
+                                          if (categories.isEmpty) {
+                                            return Center(
+                                              child: Column(
+                                                children: [
+                                                  Icon(Icons.category_outlined, size: 48, color: mutedTextColor),
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    'No inventory categories found',
+                                                    style: TextStyle(color: mutedTextColor),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  ElevatedButton.icon(
+                                                    onPressed: _openCategoryManagement,
+                                                    icon: const Icon(Icons.add),
+                                                    label: const Text('Add Categories'),
+                                                  ),
+                                                ],
                                               ),
-                                              columns: const [
-                                                DataColumn(label: Text('Item')),
-                                                DataColumn(label: Text('Category')),
-                                                DataColumn(label: Text('Current Stock')),
-                                                DataColumn(label: Text('Min Stock')),
-                                                DataColumn(label: Text('Unit Cost')),
-                                                DataColumn(label: Text('Total Value')),
-                                                DataColumn(label: Text('Status')),
-                                                DataColumn(label: Text('Actions')),
-                                              ],
-                                              rows: filteredItems.map((item) {
-                                                return DataRow(
-                                                  cells: [
-                                                    DataCell(
-                                                      Container(
-                                                        constraints: BoxConstraints(maxWidth: Responsive.width(context) * 0.15),
-                                                        child: Column(
-                                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                                          mainAxisAlignment: MainAxisAlignment.center,
-                                                          children: [
-                                                            Text(
-                                                              item.name,
-                                                              style: TextStyle(
-                                                                fontWeight: FontWeight.bold,
-                                                                color: textColor,
+                                            );
+                                          }
+                                          
+                                          return isMobile
+                                              ? ListView.builder(
+                                                  shrinkWrap: true,
+                                                  physics: const NeverScrollableScrollPhysics(),
+                                                  itemCount: categories.length,
+                                                  itemBuilder: (context, index) {
+                                                    final category = categories[index];
+                                                    final itemsCount = items.where((item) => item.categoryId == category.id).length;
+                                                    return _buildCategoryCardMobile(category, itemsCount, context, isDarkMode: isDarkMode);
+                                                  },
+                                                )
+                                              : DataTable(
+                                                  headingRowHeight: Responsive.getDataTableRowHeight(context),
+                                                  dataRowHeight: Responsive.getDataTableRowHeight(context),
+                                                  headingTextStyle: TextStyle(
+                                                    fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 13, desktop: 14),
+                                                    fontWeight: FontWeight.bold,
+                                                    color: primaryColor,
+                                                  ),
+                                                  columns: const [
+                                                    DataColumn(label: Text('Category')),
+                                                    DataColumn(label: Text('Description')),
+                                                    DataColumn(label: Text('Items Count')),
+                                                    DataColumn(label: Text('Status')),
+                                                  ],
+                                                  rows: categories.map((category) {
+                                                    final itemsCount = items
+                                                        .where((item) => item.categoryId == category.id)
+                                                        .length;
+                                                    
+                                                    return DataRow(
+                                                      cells: [
+                                                        DataCell(
+                                                          Row(
+                                                            children: [
+                                                              Container(
+                                                                width: 20,
+                                                                height: 20,
+                                                                decoration: BoxDecoration(
+                                                                  color: _parseColor(category.color),
+                                                                  borderRadius: BorderRadius.circular(4),
+                                                                  border: Border.all(color: Colors.grey.shade300),
+                                                                ),
                                                               ),
+                                                              const SizedBox(width: 8),
+                                                              Text(
+                                                                category.name,
+                                                                style: TextStyle(
+                                                                  fontWeight: FontWeight.bold,
+                                                                  color: textColor,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                        DataCell(
+                                                          SizedBox(
+                                                            width: 200,
+                                                            child: Text(
+                                                              category.description,
                                                               maxLines: 2,
                                                               overflow: TextOverflow.ellipsis,
                                                             ),
-                                                            if (item.description != null && item.description!.isNotEmpty)
-                                                              Text(
-                                                                item.description!,
-                                                                style: TextStyle(
-                                                                  fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                                                                  color: mutedTextColor,
-                                                                ),
-                                                                maxLines: 1,
-                                                                overflow: TextOverflow.ellipsis,
-                                                              ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    DataCell(
-                                                      Container(
-                                                        padding: EdgeInsets.symmetric(
-                                                          horizontal: Responsive.getFontSize(context, mobile: 6, tablet: 8, desktop: 10),
-                                                          vertical: Responsive.getFontSize(context, mobile: 3, tablet: 4, desktop: 5),
-                                                        ),
-                                                        decoration: BoxDecoration(
-                                                          color: _parseColor(item.color).withOpacity(0.1),
-                                                          borderRadius: BorderRadius.circular(4),
-                                                          border: Border.all(
-                                                            color: _parseColor(item.color).withOpacity(0.3),
                                                           ),
                                                         ),
-                                                        child: Text(
-                                                          item.categoryName,
-                                                          style: TextStyle(
-                                                            fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                                                            fontWeight: FontWeight.bold,
-                                                            color: _parseColor(item.color),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    DataCell(
-                                                      Column(
-                                                        mainAxisAlignment: MainAxisAlignment.center,
-                                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                                        children: [
+                                                        DataCell(
                                                           Text(
-                                                            '${item.currentStock} ${item.unit}',
+                                                            '$itemsCount items',
                                                             style: TextStyle(
                                                               fontWeight: FontWeight.bold,
-                                                              color: item.needsReorder ? Colors.red : Colors.green,
+                                                              color: primaryColor,
                                                             ),
                                                           ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    DataCell(
-                                                      Text(
-                                                        '${item.minimumStock} ${item.unit}',
-                                                        style: TextStyle(color: textColor),
-                                                      ),
-                                                    ),
-                                                    DataCell(
-                                                      Text(
-                                                        '₱${item.unitCost.toStringAsFixed(2)}',
-                                                        style: TextStyle(
-                                                          fontWeight: FontWeight.bold,
-                                                          color: primaryColor,
                                                         ),
-                                                      ),
-                                                    ),
-                                                    DataCell(
-                                                      Text(
-                                                        '₱${item.stockValue.toStringAsFixed(2)}',
-                                                        style: TextStyle(
-                                                          fontWeight: FontWeight.bold,
-                                                          color: primaryColor,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    DataCell(
-                                                      Container(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                        decoration: BoxDecoration(
-                                                          color: _getStatusColor(item.status).withOpacity(0.1),
-                                                          borderRadius: BorderRadius.circular(20),
-                                                          border: Border.all(
-                                                            color: _getStatusColor(item.status).withOpacity(0.3),
-                                                          ),
-                                                        ),
-                                                        child: Text(
-                                                          item.status,
-                                                          style: TextStyle(
-                                                            fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                                                            fontWeight: FontWeight.bold,
-                                                            color: _getStatusColor(item.status),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    DataCell(
-                                                      Row(
-                                                        children: [
-                                                          IconButton(
-                                                            icon: Icon(Icons.restore, size: Responsive.getIconSize(context, multiplier: 0.8)),
-                                                            color: Colors.blue,
-                                                            onPressed: () => _restockItem(item),
-                                                            tooltip: 'Restock',
-                                                          ),
-                                                          IconButton(
-                                                            icon: Icon(Icons.edit, size: Responsive.getIconSize(context, multiplier: 0.8)),
-                                                            color: Colors.green,
-                                                            onPressed: () => _editItem(item),
-                                                            tooltip: 'Edit',
-                                                          ),
-                                                          IconButton(
-                                                            icon: Icon(Icons.delete, size: Responsive.getIconSize(context, multiplier: 0.8)),
-                                                            color: Colors.red,
-                                                            onPressed: () => _deleteItem(item),
-                                                            tooltip: 'Delete',
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ],
-                                                );
-                                              }).toList(),
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(height: Responsive.getLargeSpacing(context).height),
-
-                  // Categories Summary Card
-                  Container(
-                    constraints: const BoxConstraints(
-                      minHeight: 150,
-                    ),
-                    child: Card(
-                      elevation: isDarkMode ? 2 : 3,
-                      color: cardColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                          width: 1,
-                        ),
-                      ),
-                      child: Padding(
-                        padding: Responsive.getCardPadding(context),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: primaryColor.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(Icons.category, color: primaryColor, size: 20),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'INVENTORY CATEGORIES',
-                                    style: TextStyle(
-                                      fontSize: Responsive.getTitleFontSize(context),
-                                      fontWeight: FontWeight.bold,
-                                      color: primaryColor,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: Responsive.getSpacing(context).height),
-                            
-                            StreamBuilder<List<ProductCategory>>(
-                              stream: CategoryService.getCategoriesByTypeStream('inventory'),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState == ConnectionState.waiting) {
-                                  return Center(
-                                    child: CircularProgressIndicator(color: primaryColor),
-                                  );
-                                }
-                                
-                                final categories = snapshot.data ?? [];
-                                
-                                return StreamBuilder<List<InventoryItem>>(
-                                  stream: InventoryService.getInventoryItems(),
-                                  builder: (context, itemsSnapshot) {
-                                    final items = itemsSnapshot.data ?? [];
-                                    
-                                    if (categories.isEmpty) {
-                                      return Center(
-                                        child: Column(
-                                          children: [
-                                            Icon(Icons.category_outlined, size: 48, color: mutedTextColor),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'No inventory categories found',
-                                              style: TextStyle(color: mutedTextColor),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            ElevatedButton.icon(
-                                              onPressed: _openCategoryManagement,
-                                              icon: const Icon(Icons.add),
-                                              label: const Text('Add Categories'),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                    }
-                                    
-                                    return isMobile
-                                        ? ListView.builder(
-                                            shrinkWrap: true,
-                                            physics: const NeverScrollableScrollPhysics(),
-                                            itemCount: categories.length,
-                                            itemBuilder: (context, index) {
-                                              final category = categories[index];
-                                              final itemsCount = items.where((item) => item.categoryId == category.id).length;
-                                              return _buildCategoryCardMobile(category, itemsCount, context, isDarkMode: isDarkMode);
-                                            },
-                                          )
-                                        : DataTable(
-                                            headingRowHeight: Responsive.getDataTableRowHeight(context),
-                                            dataRowHeight: Responsive.getDataTableRowHeight(context),
-                                            headingTextStyle: TextStyle(
-                                              fontSize: Responsive.getFontSize(context, mobile: 12, tablet: 13, desktop: 14),
-                                              fontWeight: FontWeight.bold,
-                                              color: primaryColor,
-                                            ),
-                                            columns: const [
-                                              DataColumn(label: Text('Category')),
-                                              DataColumn(label: Text('Description')),
-                                              DataColumn(label: Text('Items Count')),
-                                              DataColumn(label: Text('Status')),
-                                            ],
-                                            rows: categories.map((category) {
-                                              final itemsCount = items
-                                                  .where((item) => item.categoryId == category.id)
-                                                  .length;
-                                              
-                                              return DataRow(
-                                                cells: [
-                                                  DataCell(
-                                                    Row(
-                                                      children: [
-                                                        Container(
-                                                          width: 20,
-                                                          height: 20,
-                                                          decoration: BoxDecoration(
-                                                            color: _parseColor(category.color),
-                                                            borderRadius: BorderRadius.circular(4),
-                                                            border: Border.all(color: Colors.grey.shade300),
-                                                          ),
-                                                        ),
-                                                        const SizedBox(width: 8),
-                                                        Text(
-                                                          category.name,
-                                                          style: TextStyle(
-                                                            fontWeight: FontWeight.bold,
-                                                            color: textColor,
+                                                        DataCell(
+                                                          Chip(
+                                                            label: Text(
+                                                              category.isActive ? 'Active' : 'Inactive',
+                                                            ),
+                                                            backgroundColor: category.isActive
+                                                                ? Colors.green.shade100
+                                                                : Colors.grey.shade200,
+                                                            labelStyle: TextStyle(
+                                                              color: category.isActive ? Colors.green : Colors.grey,
+                                                              fontWeight: FontWeight.bold,
+                                                            ),
                                                           ),
                                                         ),
                                                       ],
-                                                    ),
-                                                  ),
-                                                  DataCell(
-                                                    SizedBox(
-                                                      width: 200,
-                                                      child: Text(
-                                                        category.description,
-                                                        maxLines: 2,
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  DataCell(
-                                                    Text(
-                                                      '$itemsCount items',
-                                                      style: TextStyle(
-                                                        fontWeight: FontWeight.bold,
-                                                        color: primaryColor,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  DataCell(
-                                                    Chip(
-                                                      label: Text(
-                                                        category.isActive ? 'Active' : 'Inactive',
-                                                      ),
-                                                      backgroundColor: category.isActive
-                                                          ? Colors.green.shade100
-                                                          : Colors.grey.shade200,
-                                                      labelStyle: TextStyle(
-                                                        color: category.isActive ? Colors.green : Colors.grey,
-                                                        fontWeight: FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              );
-                                            }).toList(),
-                                          );
-                                  },
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(height: Responsive.getLargeSpacing(context).height),
-
-                  // Inventory Guidelines Card
-                  Container(
-                    constraints: const BoxConstraints(
-                      minHeight: 150,
-                    ),
-                    child: Card(
-                      elevation: isDarkMode ? 2 : 3,
-                      color: Colors.blue.shade50.withOpacity(isDarkMode ? 0.2 : 1),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: isDarkMode ? Colors.blue.shade700 : Colors.blue.shade300,
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Padding(
-                        padding: Responsive.getCardPadding(context),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
+                                                    );
+                                                  }).toList(),
+                                                );
+                                        },
+                                      );
+                                    },
                                   ),
-                                  child: const Icon(Icons.info, color: Colors.blue, size: 20),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'INVENTORY GUIDELINES',
-                                    style: TextStyle(
-                                      fontSize: Responsive.getSubtitleFontSize(context),
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.blue,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                            SizedBox(height: Responsive.getSpacing(context).height),
-                            _buildGuidelineItem(
-                              'Check inventory daily before accepting large orders',
-                              context,
-                              isDarkMode: isDarkMode,
-                              iconColor: Colors.blue,
-                            ),
-                            _buildGuidelineItem(
-                              'Reorder when stock reaches minimum level',
-                              context,
-                              isDarkMode: isDarkMode,
-                              iconColor: Colors.blue,
-                            ),
-                            _buildGuidelineItem(
-                              'Maintain 3-5 days worth of inventory for peak seasons',
-                              context,
-                              isDarkMode: isDarkMode,
-                              iconColor: Colors.blue,
-                            ),
-                            _buildGuidelineItem(
-                              'Track seasonal demand patterns (weddings, holidays, fiestas)',
-                              context,
-                              isDarkMode: isDarkMode,
-                              iconColor: Colors.blue,
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
+
+                      SizedBox(height: Responsive.getLargeSpacing(context).height),
+
+                      // Inventory Guidelines Card
+                      if (!_isInitialLoad)
+                        Container(
+                          constraints: const BoxConstraints(
+                            minHeight: 150,
+                          ),
+                          child: Card(
+                            elevation: isDarkMode ? 2 : 3,
+                            color: Colors.blue.shade50.withOpacity(isDarkMode ? 0.2 : 1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: isDarkMode ? Colors.blue.shade700 : Colors.blue.shade300,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: Responsive.getCardPadding(context),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(Icons.info, color: Colors.blue, size: 20),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'INVENTORY GUIDELINES',
+                                          style: TextStyle(
+                                            fontSize: Responsive.getSubtitleFontSize(context),
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: Responsive.getSpacing(context).height),
+                                  _buildGuidelineItem(
+                                    'Check inventory daily before accepting large orders',
+                                    context,
+                                    isDarkMode: isDarkMode,
+                                    iconColor: Colors.blue,
+                                  ),
+                                  _buildGuidelineItem(
+                                    'Reorder when stock reaches minimum level',
+                                    context,
+                                    isDarkMode: isDarkMode,
+                                    iconColor: Colors.blue,
+                                  ),
+                                  _buildGuidelineItem(
+                                    'Maintain 3-5 days worth of inventory for peak seasons',
+                                    context,
+                                    isDarkMode: isDarkMode,
+                                    iconColor: Colors.blue,
+                                  ),
+                                  _buildGuidelineItem(
+                                    'Track seasonal demand patterns (weddings, holidays, fiestas)',
+                                    context,
+                                    isDarkMode: isDarkMode,
+                                    iconColor: Colors.blue,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                ],
+                ),
+              );
+            },
+          ),
+          
+          // Loading Overlay
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.3),
+              child: const Center(
+                child: CircularProgressIndicator(),
               ),
             ),
-          );
-        },
+        ],
       ),
+    );
+  }
+
+  Widget _buildSkeletonScreen(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final padding = Responsive.getScreenPadding(context);
+    
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade50,
+        ),
+        child: SingleChildScrollView(
+          padding: padding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Skeleton Stats Grid
+              _buildSkeletonStatsGrid(context, isDarkMode: isDarkMode),
+              const SizedBox(height: 16),
+              
+              // Skeleton Filter Card
+              _buildSkeletonCard(context, height: 150, isDarkMode: isDarkMode),
+              const SizedBox(height: 16),
+              
+              // Skeleton Action Row
+              _buildSkeletonCard(context, height: 100, isDarkMode: isDarkMode),
+              const SizedBox(height: 16),
+              
+              // Skeleton Table
+              _buildSkeletonTable(context, isDarkMode: isDarkMode),
+              const SizedBox(height: 16),
+              
+              // Skeleton Category Card
+              _buildSkeletonCard(context, height: 150, isDarkMode: isDarkMode),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonStatsGrid(BuildContext context, {bool isDarkMode = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Center(
+          child: Container(
+            width: 200,
+            height: 24,
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        ),
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: Responsive.isMobile(context) ? 2 : 4,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.8,
+          children: List.generate(4, (index) => 
+            _buildSkeletonStatCard(context, isDarkMode: isDarkMode)
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSkeletonTableContent(BuildContext context, {bool isDarkMode = false, int rowCount = 5}) {
+    return Column(
+      children: [
+        // Skeleton Table Header
+        Row(
+          children: List.generate(8, (index) => Expanded(
+            child: Container(
+              height: 40,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          )),
+        ),
+        const SizedBox(height: 12),
+        // Skeleton Rows
+        ...List.generate(rowCount, (rowIndex) => Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: List.generate(8, (colIndex) => Expanded(
+              child: Container(
+                height: 40,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            )),
+          ),
+        )),
+      ],
     );
   }
 
@@ -2281,10 +2629,10 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                         tooltip: 'Edit',
                       ),
                       IconButton(
-                        icon: Icon(Icons.delete, size: Responsive.getIconSize(context, multiplier: 0.9)),
-                        color: Colors.red,
-                        onPressed: () => _deleteItem(item),
-                        tooltip: 'Delete',
+                        icon: Icon(Icons.power_settings_new, size: Responsive.getIconSize(context, multiplier: 0.9)),
+                        color: item.isActive ? Colors.orange : Colors.green,
+                        onPressed: () => _toggleItemStatus(item),
+                        tooltip: item.isActive ? 'Deactivate' : 'Activate',
                       ),
                     ],
                   ),

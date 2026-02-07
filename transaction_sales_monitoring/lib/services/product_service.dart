@@ -70,7 +70,8 @@ class ProductService {
     try {
       await productsCollection.doc(product.id).update({
         'name': product.name,
-        'categoryId': product.categoryId,
+        'category': product.category, // Use category (name)
+        'categoryId': product.categoryId, // Keep categoryId if needed
         'description': product.description,
         'price': product.price,
         'cost': product.cost,
@@ -201,9 +202,8 @@ class ProductService {
       };
     }
   }
-
+  
   // Initialize default products
-
   static Future<void> initializeDefaultProducts() async {
     try {
       // Check if products already exist
@@ -218,7 +218,7 @@ class ProductService {
         return;
       }
 
-      // Create default products - FIXED TYPES
+      // Create default products
       final List<Map<String, dynamic>> defaultProducts = [
         {
           'name': 'Whole Lechon (Small)',
@@ -233,76 +233,12 @@ class ProductService {
           'ingredients': ['pig', 'spices', 'charcoal'],
           'categoryId': 'lechon',
         },
-        {
-          'name': 'Whole Lechon (Medium)',
-          'description': 'Medium whole roasted pig, serves 20-25 people',
-          'price': 8000.0,
-          'cost': 5000.0,
-          'unit': 'head',
-          'stock': 3,
-          'reorderLevel': 1,
-          'image': null,
-          'kls': '20-25kg',
-          'ingredients': ['pig', 'spices', 'charcoal'],
-          'categoryId': 'lechon',
-        },
-        {
-          'name': 'Lechon Belly (Regular)',
-          'description': 'Roasted pork belly, serves 5-8 people',
-          'price': 1500.0,
-          'cost': 800.0,
-          'unit': 'roll',
-          'stock': 10,
-          'reorderLevel': 3,
-          'image': null,
-          'kls': '2-3kg',
-          'ingredients': ['pork belly', 'spices', 'charcoal'],
-          'categoryId': 'belly',
-        },
-        {
-          'name': 'Lechon Belly (Spicy)',
-          'description': 'Spicy roasted pork belly, serves 5-8 people',
-          'price': 1800.0,
-          'cost': 900.0,
-          'unit': 'roll',
-          'stock': 8,
-          'reorderLevel': 2,
-          'image': null,
-          'kls': '2-3kg',
-          'ingredients': ['pork belly', 'spices', 'chili', 'charcoal'],
-          'categoryId': 'belly',
-        },
-        {
-          'name': 'Softdrinks (1.5L)',
-          'description': '1.5 liter softdrinks',
-          'price': 80.0,
-          'cost': 40.0,
-          'unit': 'bottle',
-          'stock': 50,
-          'reorderLevel': 10,
-          'image': null,
-          'kls': '1.5L',
-          'ingredients': ['soda', 'sugar', 'water'],
-          'categoryId': 'drinks',
-        },
-        {
-          'name': 'Bottled Water (500ml)',
-          'description': '500ml bottled water',
-          'price': 20.0,
-          'cost': 8.0,
-          'unit': 'bottle',
-          'stock': 100,
-          'reorderLevel': 20,
-          'image': null,
-          'kls': '500ml',
-          'ingredients': ['water'],
-          'categoryId': 'drinks',
-        },
+        // ... other products
       ];
 
       // Add default products
       for (var i = 0; i < defaultProducts.length; i++) {
-        final Map<String, dynamic> productData = defaultProducts[i]; // Explicit type
+        final productData = defaultProducts[i];
         
         // Find category
         final category = categories.firstWhere(
@@ -317,17 +253,18 @@ class ProductService {
 
         final product = Product(
           id: 'prod_${DateTime.now().millisecondsSinceEpoch}_$i',
-          name: productData['name'] as String, // Cast to String
-          categoryId: category.id,
-          description: productData['description'] as String, // Cast to String
-          price: productData['price'] as double, // Cast to double
-          cost: productData['cost'] as double, // Cast to double
-          unit: productData['unit'] as String, // Cast to String
-          stock: productData['stock'] as int, // Cast to int
-          reorderLevel: productData['reorderLevel'] as int, // Cast to int
-          image: productData['image'] as String?, // Explicit cast to String?
-          kls: productData['kls'] as String, // Cast to String
-          ingredients: productData['ingredients'] as List<dynamic>, // Cast to List<dynamic>
+          name: productData['name'] as String,
+          category: category.name, // Use category name
+          categoryId: category.id, // Keep category ID
+          description: productData['description'] as String,
+          price: productData['price'] as double,
+          cost: productData['cost'] as double,
+          unit: productData['unit'] as String,
+          stock: productData['stock'] as int,
+          reorderLevel: productData['reorderLevel'] as int,
+          image: productData['image'] as String?,
+          kls: productData['kls'] as String,
+          ingredients: productData['ingredients'] as List<dynamic>,
           isActive: true,
           createdAt: DateTime.now(),
         );

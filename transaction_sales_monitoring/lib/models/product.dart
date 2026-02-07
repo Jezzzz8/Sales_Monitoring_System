@@ -1,10 +1,11 @@
-// lib/models/product.dart - UPDATED VERSION
+// lib/models/product.dart - UPDATE
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Product {
   final String id;
+  final String category; // This should be the category name from Firebase
+  final String categoryId; // Keep this if you still need it
   final String name;
-  final String categoryId;
   final String description;
   final double price;
   final double cost;
@@ -20,8 +21,9 @@ class Product {
 
   Product({
     required this.id,
+    required this.category, // This should be category name
+    this.categoryId = '', // Add this field
     required this.name,
-    required this.categoryId,
     required this.description,
     required this.price,
     required this.cost,
@@ -40,7 +42,8 @@ class Product {
     return {
       'id': id,
       'name': name,
-      'categoryId': categoryId,
+      'category': category, // Map to 'category' field
+      'categoryId': categoryId, // Keep if needed
       'description': description,
       'price': price,
       'cost': cost,
@@ -61,7 +64,8 @@ class Product {
     return Product(
       id: doc.id,
       name: data['name'] ?? '',
-      categoryId: data['categoryId'] ?? '',
+      category: data['category'] ?? '', // Get category name
+      categoryId: data['categoryId'] ?? '', // Get category ID if exists
       description: data['description'] ?? '',
       price: (data['price'] ?? 0).toDouble(),
       cost: (data['cost'] ?? 0).toDouble(),
@@ -77,34 +81,12 @@ class Product {
     );
   }
 
-  factory Product.fromMap(Map<String, dynamic> map) {
-    return Product(
-      id: map['id'],
-      name: map['name'],
-      categoryId: map['category'],
-      description: map['description'] ?? '',
-      price: (map['price'] ?? 0).toDouble(),
-      cost: (map['cost'] ?? 0).toDouble(),
-      unit: map['unit'] ?? 'pcs',
-      stock: map['stock'] ?? 0,
-      reorderLevel: map['reorderLevel'] ?? 0,
-      image: map['image'],
-      kls: map['kls'],
-      ingredients: map['ingredients'],
-      isActive: map['active'] ?? true,
-      createdAt: map['createdAt'] != null 
-          ? (map['createdAt'] as Timestamp).toDate()
-          : DateTime.now(),
-      updatedAt: map['updatedAt'] != null 
-          ? (map['updatedAt'] as Timestamp).toDate()
-          : null,
-    );
-  }
-
+  // Update the copyWith method
   Product copyWith({
     String? id,
-    String? name,
+    String? category,
     String? categoryId,
+    String? name,
     String? description,
     double? price,
     double? cost,
@@ -120,8 +102,9 @@ class Product {
   }) {
     return Product(
       id: id ?? this.id,
-      name: name ?? this.name,
+      category: category ?? this.category,
       categoryId: categoryId ?? this.categoryId,
+      name: name ?? this.name,
       description: description ?? this.description,
       price: price ?? this.price,
       cost: cost ?? this.cost,
