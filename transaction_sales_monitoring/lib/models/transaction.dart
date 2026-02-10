@@ -1,4 +1,4 @@
-// lib/models/transaction.dart - UPDATED VERSION
+// lib/models/transaction.dart - UPDATED VERSION with factory constructor fix
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class TransactionModel {
@@ -10,6 +10,7 @@ class TransactionModel {
   String paymentMethod;
   double totalAmount;
   double amountPaid;
+  double cashReceived;
   double change;
   String status;
   List<TransactionItem> items;
@@ -27,6 +28,7 @@ class TransactionModel {
     required this.paymentMethod,
     required this.totalAmount,
     required this.amountPaid,
+    required this.cashReceived,
     required this.change,
     required this.status,
     required this.items,
@@ -46,6 +48,7 @@ class TransactionModel {
       'paymentMethod': paymentMethod,
       'totalAmount': totalAmount,
       'amountPaid': amountPaid,
+      'cashReceived': cashReceived,
       'change': change,
       'status': status,
       'items': items.map((item) => item.toMap()).toList(),
@@ -59,17 +62,22 @@ class TransactionModel {
   // For Firebase document
   Map<String, dynamic> toFirestore() {
     return {
-      'cashReceived': amountPaid,
+      'amountPaid': amountPaid,
+      'cashReceived': cashReceived,
       'cashier': cashier,
       'change': change,
       'contact': customerPhone,
       'customer': customerName,
+      'customerName': customerName,
+      'customerContact': customerPhone,
       'date': Timestamp.fromDate(transactionDate),
       'items': items.map((item) => item.toFirestoreMap()).toList(),
       'method': paymentMethod,
+      'paymentMethod': paymentMethod,
       'orderId': transactionNumber,
       'reference': reference ?? '-',
       'total': totalAmount,
+      'totalAmount': totalAmount,
       'status': status,
       'notes': notes ?? '',
       'createdAt': Timestamp.fromDate(createdAt),
@@ -78,6 +86,9 @@ class TransactionModel {
   }
 
   factory TransactionModel.fromMap(Map<String, dynamic> map) {
+    // Get totalAmount first (used in amountPaid default)
+    final mapTotalAmount = (map['totalAmount'] ?? map['total'] ?? 0).toDouble();
+    
     return TransactionModel(
       id: map['id'] ?? '',
       transactionNumber: map['transactionNumber'] ?? map['orderId'] ?? '#N/A',
@@ -87,10 +98,13 @@ class TransactionModel {
               ? (map['date'] as Timestamp).toDate()
               : DateTime.now()),
       customerName: map['customerName'] ?? map['customer'] ?? 'Walk-in',
-      customerPhone: map['customerPhone'] ?? map['contact'] ?? '-',
+      customerPhone: map['customerPhone'] ?? map['contact'] ?? map['customerContact'] ?? '-',
       paymentMethod: map['paymentMethod'] ?? map['method'] ?? 'Cash',
-      totalAmount: (map['totalAmount'] ?? map['total'] ?? 0).toDouble(),
-      amountPaid: (map['amountPaid'] ?? map['cashReceived'] ?? 0).toDouble(),
+      totalAmount: mapTotalAmount,
+      // amountPaid: The total amount the customer should pay
+      amountPaid: (map['amountPaid'] ?? mapTotalAmount).toDouble(),
+      // cashReceived: The actual cash received (can be partial)
+      cashReceived: (map['cashReceived'] ?? map['amountPaid'] ?? mapTotalAmount).toDouble(),
       change: (map['change'] ?? 0).toDouble(),
       status: map['status'] ?? 'Completed',
       items: List<TransactionItem>.from(
@@ -110,20 +124,23 @@ class TransactionModel {
   factory TransactionModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     
-    // Debug log to see what fields are available
     print('Firestore Document ID: ${doc.id}');
     print('Firestore Data: $data');
-    print('Fields present: ${data.keys.toList()}');
+    
+    double totalAmount = (data['totalAmount'] ?? data['total'] ?? 0).toDouble();
     
     return TransactionModel(
       id: doc.id,
       transactionNumber: data['orderId'] ?? '#N/A',
       transactionDate: (data['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      customerName: data['customer'] ?? 'Walk-in',
-      customerPhone: data['contact'] ?? '-',
-      paymentMethod: data['method'] ?? 'Cash',
-      totalAmount: (data['total'] ?? 0).toDouble(),
-      amountPaid: (data['cashReceived'] ?? 0).toDouble(),
+      customerName: data['customerName'] ?? data['customer'] ?? 'Walk-in',
+      customerPhone: data['customerContact'] ?? data['contact'] ?? '-',
+      paymentMethod: data['paymentMethod'] ?? data['method'] ?? 'Cash',
+      totalAmount: totalAmount,
+      // amountPaid: The total amount the customer should pay
+      amountPaid: (data['amountPaid'] ?? totalAmount).toDouble(),
+      // cashReceived: The actual cash received (can be partial)
+      cashReceived: (data['cashReceived'] ?? data['amountPaid'] ?? totalAmount).toDouble(),
       change: (data['change'] ?? 0).toDouble(),
       status: data['status'] ?? 'Completed',
       items: List<TransactionItem>.from(
@@ -145,6 +162,7 @@ class TransactionModel {
     String? paymentMethod,
     double? totalAmount,
     double? amountPaid,
+    double? cashReceived,
     double? change,
     String? status,
     List<TransactionItem>? items,
@@ -162,6 +180,7 @@ class TransactionModel {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       totalAmount: totalAmount ?? this.totalAmount,
       amountPaid: amountPaid ?? this.amountPaid,
+      cashReceived: cashReceived ?? this.cashReceived,
       change: change ?? this.change,
       status: status ?? this.status,
       items: items ?? this.items,
@@ -175,8 +194,16 @@ class TransactionModel {
   String get formattedDate => '${transactionDate.day}/${transactionDate.month}/${transactionDate.year}';
   String get formattedTime => '${transactionDate.hour.toString().padLeft(2, '0')}:${transactionDate.minute.toString().padLeft(2, '0')}';
   
-  // Helper method to get display name
   String get displayTransactionNumber => transactionNumber.startsWith('#') ? transactionNumber : '#$transactionNumber';
+  
+  // Helper getters for business logic
+  double get balance => amountPaid - cashReceived; // Amount still owed (negative means balance due)
+  bool get isFullyPaid => cashReceived >= amountPaid;
+  bool get hasPartialPayment => cashReceived > 0 && cashReceived < amountPaid;
+  bool get hasChange => cashReceived > amountPaid;
+  
+  // Calculate actual change to give (positive if cashReceived > amountPaid, 0 otherwise)
+  double get actualChange => cashReceived > amountPaid ? cashReceived - amountPaid : 0;
 }
 
 class TransactionItem {
@@ -204,7 +231,6 @@ class TransactionItem {
     };
   }
 
-  // For Firebase document
   Map<String, dynamic> toFirestoreMap() {
     return {
       'id': productId,
@@ -216,7 +242,6 @@ class TransactionItem {
   }
 
   factory TransactionItem.fromMap(Map<String, dynamic> map) {
-    // Debug log for item mapping
     print('TransactionItem map: $map');
     
     return TransactionItem(

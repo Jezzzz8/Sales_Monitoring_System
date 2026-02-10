@@ -1,4 +1,4 @@
-// lib/screens/product_management.dart - FIXED VERSION
+// lib/screens/product_management.dart - UPDATED WITH INVENTORY DEPENDENCY FEATURES
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -7,11 +7,14 @@ import 'package:image_picker/image_picker.dart';
 import '../models/category_model.dart';
 import '../models/product.dart';
 import '../services/product_service.dart';
-import '../services/category_service.dart';
+import '../services/category_service.dart' hide InventoryService;
 import '../utils/responsive.dart';
 import '../screens/category_management.dart';
 import '../utils/settings_mixin.dart';
 import '../services/image_upload_service.dart';
+import '../models/inventory.dart';
+import '../services/inventory_service.dart';
+import '../models/product.dart';
 
 class ProductManagement extends StatefulWidget {
   const ProductManagement({super.key});
@@ -320,7 +323,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                 final categories = snapshot.data ?? [];
                                 
                                 return DropdownButtonFormField<String>(
-                                  value: _selectedCategory,
+                                  initialValue: _selectedCategory,
                                   dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                   style: TextStyle(color: textColor),
                                   decoration: InputDecoration(
@@ -414,7 +417,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                               }
                               
                               return DropdownButtonFormField<String>(
-                                value: currentSelectedCategory, // Use validated category
+                                initialValue: currentSelectedCategory, // Use validated category
                                 dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                 style: TextStyle(color: textColor),
                                 decoration: InputDecoration(
@@ -443,7 +446,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                   ...categories.map((category) => DropdownMenuItem(
                                         value: category.id,
                                         child: Text(category.name, style: TextStyle(color: textColor)),
-                                      )).toList(),
+                                      )),
                                 ],
                                 onChanged: (value) {
                                   setState(() {
@@ -707,8 +710,8 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                     _showInactive = true;
                                   });
                                 },
-                                icon: Icon(Icons.visibility, size: 18),
-                                label: Text('Show Inactive Products'),
+                                icon: const Icon(Icons.visibility, size: 18),
+                                label: const Text('Show Inactive Products'),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.orange,
                                   foregroundColor: Colors.white,
@@ -740,10 +743,10 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                       ),
                       if (_showInactive)
                         Chip(
-                          label: Text('Showing Inactive'),
+                          label: const Text('Showing Inactive'),
                           backgroundColor: Colors.orange.withOpacity(0.2),
-                          labelStyle: TextStyle(color: Colors.orange),
-                          avatar: Icon(Icons.visibility, size: 16, color: Colors.orange),
+                          labelStyle: const TextStyle(color: Colors.orange),
+                          avatar: const Icon(Icons.visibility, size: 16, color: Colors.orange),
                         ),
                     ],
                   ),
@@ -1052,6 +1055,29 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
     );
   }
 
+  Future<Map<String, dynamic>> _getProductionFeasibility(Product product) async {
+    final canProduce = product.hasAllIngredients;
+    final missingIngredients = <String>[];
+    double totalCost = 0.0;
+    
+    if (product.ingredients != null) {
+      for (final ingredient in product.ingredients!) {
+        totalCost += ingredient.totalCost;
+        
+        final inventoryItem = await InventoryService.getInventoryItem(ingredient.inventoryId);
+        if (inventoryItem == null || inventoryItem.currentStock < ingredient.quantity) {
+          missingIngredients.add(ingredient.inventoryName);
+        }
+      }
+    }
+    
+    return {
+      'canProduce': canProduce,
+      'missingIngredients': missingIngredients,
+      'totalCost': totalCost,
+    };
+  }
+
   Widget _buildSkeletonCard(BuildContext context, {double height = 150, bool isDarkMode = false}) {
     return Container(
       constraints: BoxConstraints(minHeight: height),
@@ -1105,7 +1131,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
             ],
           ),
         ),
-      ),
+      )
     );
   }
 
@@ -1428,6 +1454,41 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                           ),
                         ),
                       ),
+                    // NEW: Add inventory dependency indicator
+                    if (product.dependsOnInventory)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(6),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 2,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.inventory, size: 10, color: Colors.white),
+                              SizedBox(width: 2),
+                              Text(
+                                'Auto',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -1521,11 +1582,14 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                           ),
                           const SizedBox(width: 2),
                           Text(
-                            '${product.stock}',
+                            product.dependsOnInventory 
+                                ? 'Auto'  // Show "Auto" for inventory-dependent products
+                                : '${product.stock}',
                             style: TextStyle(
                               fontSize: 8,
                               color: product.needsReorder ? Colors.red : Colors.green,
                               fontWeight: FontWeight.bold,
+                              fontStyle: product.dependsOnInventory ? FontStyle.italic : FontStyle.normal,
                             ),
                           ),
                         ],
@@ -1765,8 +1829,8 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                     }
                   }
                 },
-                icon: Icon(Icons.photo_library, size: 18),
-                label: Text('Gallery'),
+                icon: const Icon(Icons.photo_library, size: 18),
+                label: const Text('Gallery'),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
@@ -1785,8 +1849,8 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                     }
                   }
                 },
-                icon: Icon(Icons.camera_alt, size: 18),
-                label: Text('Camera'),
+                icon: const Icon(Icons.camera_alt, size: 18),
+                label: const Text('Camera'),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
@@ -1819,7 +1883,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                   future: File(_selectedImage!.path).readAsBytes(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return Center(child: CircularProgressIndicator());
+                      return const Center(child: CircularProgressIndicator());
                     }
                     if (snapshot.hasData) {
                       return ClipRRect(
@@ -1830,7 +1894,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                         ),
                       );
                     }
-                    return Center(
+                    return const Center(
                       child: Icon(Icons.error, color: Colors.red),
                     );
                   },
@@ -1843,8 +1907,8 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                     _selectedImage = null;
                   });
                 },
-                icon: Icon(Icons.delete, size: 16),
-                label: Text('Remove Selected Image'),
+                icon: const Icon(Icons.delete, size: 16),
+                label: const Text('Remove Selected Image'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
@@ -2209,9 +2273,22 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                   _buildDetailItem('Category', category.name, Icons.category, isMobile),
                                   _buildDetailItem('Price', '₱${product.price.toStringAsFixed(2)}', Icons.attach_money, isMobile),
                                   _buildDetailItem('Cost', '₱${product.cost.toStringAsFixed(2)}', Icons.price_change, isMobile),
-                                  _buildDetailItem('Stock', '${product.stock}', Icons.inventory, isMobile),
-                                  _buildDetailItem('Reorder Level', '${product.reorderLevel}', Icons.warning, isMobile),
+                                  _buildDetailItem(
+                                    'Stock', 
+                                    product.dependsOnInventory ? 'Auto (from inventory)' : '${product.stock}', 
+                                    Icons.inventory, 
+                                    isMobile,
+                                    subtitle: product.dependsOnInventory ? 'Calculated from available ingredients' : null,
+                                  ),
+                                  _buildDetailItem('Reorder Level', product.dependsOnInventory ? 'N/A' : '${product.reorderLevel}', Icons.warning, isMobile),
                                   _buildDetailItem('Unit', product.unit, Icons.scale, isMobile),
+                                  _buildDetailItem(
+                                    'Inventory Type', 
+                                    product.dependsOnInventory ? 'Inventory-Dependent' : 'Independent', 
+                                    product.dependsOnInventory ? Icons.inventory : Icons.store, 
+                                    isMobile,
+                                    color: product.dependsOnInventory ? Colors.blue : Colors.orange,
+                                  ),
                                   _buildDetailItem(
                                     'Status', 
                                     product.isActive ? 'Active' : 'Inactive', 
@@ -2255,11 +2332,11 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                             ),
                           ],
                           
-                          // Ingredients
-                          if (product.ingredients != null && product.ingredients!.isNotEmpty) ...[
+                          // Ingredients Section
+                          if (product.dependsOnInventory && product.ingredients != null && product.ingredients!.isNotEmpty) ...[
                             SizedBox(height: isMobile ? 12 : 16),
                             Text(
-                              'INGREDIENTS',
+                              'INGREDIENTS & PRODUCTION',
                               style: TextStyle(
                                 fontSize: isMobile ? 13 : 14,
                                 fontWeight: FontWeight.bold,
@@ -2267,23 +2344,230 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                               ),
                             ),
                             SizedBox(height: isMobile ? 4 : 8),
-                            Wrap(
-                              spacing: isMobile ? 6 : 8,
-                              runSpacing: isMobile ? 6 : 8,
-                              children: product.ingredients!.map((ingredient) {
-                                return Chip(
-                                  label: Text(
-                                    ingredient,
-                                    style: TextStyle(fontSize: isMobile ? 11 : 12),
-                                  ),
-                                  backgroundColor: primaryColor.withOpacity(0.1),
-                                  labelStyle: TextStyle(color: primaryColor),
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: isMobile ? 8 : 12,
-                                    vertical: isMobile ? 2 : 4,
-                                  ),
+                            
+                            // Production Feasibility
+                            FutureBuilder<Map<String, dynamic>>(
+                              future: _getProductionFeasibility(product),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return Center(child: CircularProgressIndicator(color: primaryColor));
+                                }
+                                
+                                final data = snapshot.data ?? {
+                                  'canProduce': false,
+                                  'missingIngredients': [],
+                                  'totalCost': 0.0,
+                                };
+                                final canProduce = data['canProduce'] as bool;
+                                final missingIngredients = data['missingIngredients'] as List<String>;
+                                final totalCost = data['totalCost'] as double;
+                                
+                                return Column(
+                                  children: [
+                                    // Production Status
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: canProduce 
+                                            ? Colors.green.withOpacity(0.1)
+                                            : Colors.orange.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: canProduce ? Colors.green : Colors.orange,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            canProduce ? Icons.check_circle : Icons.warning,
+                                            size: 16,
+                                            color: canProduce ? Colors.green : Colors.orange,
+                                          ),
+                                          SizedBox(width: isMobile ? 8 : 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  canProduce 
+                                                      ? 'Ready for Production'
+                                                      : 'Cannot Produce Now',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: canProduce ? Colors.green : Colors.orange,
+                                                    fontSize: isMobile ? 14 : 16,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  canProduce
+                                                      ? 'All ingredients are available in stock'
+                                                      : 'Some ingredients are insufficient',
+                                                  style: TextStyle(
+                                                    color: isDarkMode ? Colors.grey.shade300 : Colors.grey.shade700,
+                                                    fontSize: isMobile ? 12 : 13,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    
+                                    SizedBox(height: isMobile ? 8 : 12),
+                                    
+                                    // Ingredients List
+                                    ...product.ingredients!.map((ingredient) {
+                                      return FutureBuilder<InventoryItem?>(
+                                        future: InventoryService.getInventoryItem(ingredient.inventoryId),
+                                        builder: (context, snapshot) {
+                                          final inventoryItem = snapshot.data;
+                                          final availableStock = inventoryItem?.currentStock ?? 0;
+                                          final isSufficient = availableStock >= ingredient.quantity;
+                                          
+                                          return Card(
+                                            margin: EdgeInsets.only(bottom: isMobile ? 4 : 6),
+                                            elevation: 1,
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(8),
+                                              child: Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text(
+                                                          ingredient.inventoryName,
+                                                          style: TextStyle(
+                                                            fontWeight: FontWeight.bold,
+                                                            color: textColor,
+                                                            fontSize: isMobile ? 13 : 14,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(height: 2),
+                                                        Text(
+                                                          '${ingredient.quantity} ${ingredient.unit} × ₱${ingredient.unitCost}/${ingredient.unit}',
+                                                          style: TextStyle(
+                                                            color: mutedTextColor,
+                                                            fontSize: isMobile ? 11 : 12,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                                    children: [
+                                                      Text(
+                                                        '₱${ingredient.totalCost.toStringAsFixed(2)}',
+                                                        style: TextStyle(
+                                                          fontWeight: FontWeight.bold,
+                                                          color: primaryColor,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: isSufficient
+                                                              ? Colors.green.withOpacity(0.1)
+                                                              : Colors.red.withOpacity(0.1),
+                                                          borderRadius: BorderRadius.circular(4),
+                                                          border: Border.all(
+                                                            color: isSufficient ? Colors.green : Colors.red,
+                                                            width: 0.5,
+                                                          ),
+                                                        ),
+                                                        child: Text(
+                                                          '${availableStock.toStringAsFixed(1)} ${ingredient.unit}',
+                                                          style: TextStyle(
+                                                            color: isSufficient ? Colors.green : Colors.red,
+                                                            fontSize: isMobile ? 10 : 11,
+                                                            fontWeight: FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      );
+                                    }),
+                                    
+                                    // Total Cost
+                                    Card(
+                                      elevation: 2,
+                                      color: primaryColor.withOpacity(0.05),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              'Total Ingredient Cost:',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: textColor,
+                                              ),
+                                            ),
+                                            Text(
+                                              '₱${totalCost.toStringAsFixed(2)}',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: primaryColor,
+                                                fontSize: isMobile ? 16 : 18,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    
+                                    // Missing Ingredients Warning
+                                    if (!canProduce && missingIngredients.isNotEmpty) ...[
+                                      SizedBox(height: isMobile ? 8 : 12),
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: Colors.red.withOpacity(0.3)),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Row(
+                                              children: [
+                                                Icon(Icons.warning, color: Colors.red, size: 16),
+                                                SizedBox(width: 8),
+                                                Text(
+                                                  'Missing Ingredients:',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.red,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            ...missingIngredients.map((ingredient) => Padding(
+                                              padding: const EdgeInsets.only(left: 8, bottom: 4),
+                                              child: Text(
+                                                '• $ingredient',
+                                                style: const TextStyle(color: Colors.red),
+                                              ),
+                                            )),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 );
-                              }).toList(),
+                              },
                             ),
                           ],
                           
@@ -2423,7 +2707,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
     }
   }
   
-  Widget _buildDetailItem(String label, String value, IconData icon, bool isMobile, {Color? color}) {
+  Widget _buildDetailItem(String label, String value, IconData icon, bool isMobile, {Color? color, String? subtitle}) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = getPrimaryColor();
     final textColor = isDarkMode ? Colors.white : Colors.black87;
@@ -2434,37 +2718,51 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
         color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            size: isMobile ? 16 : 18,
-            color: color ?? primaryColor,
-          ),
-          SizedBox(width: isMobile ? 8 : 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: isMobile ? 11 : 12,
-                    color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600,
-                  ),
+          Row(
+            children: [
+              Icon(
+                icon,
+                size: isMobile ? 16 : 18,
+                color: color ?? primaryColor,
+              ),
+              SizedBox(width: isMobile ? 8 : 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: isMobile ? 11 : 12,
+                        color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      value,
+                      style: TextStyle(
+                        fontSize: isMobile ? 13 : 14,
+                        color: textColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (subtitle != null)
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: isMobile ? 10 : 11,
+                          color: isDarkMode ? Colors.grey.shade500 : Colors.grey.shade600,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                  ],
                 ),
-                SizedBox(height: 2),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: isMobile ? 13 : 14,
-                    color: textColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -2489,7 +2787,6 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
       final TextEditingController stockController = TextEditingController();
       final TextEditingController reorderController = TextEditingController(text: '0');
       final TextEditingController unitController = TextEditingController(text: 'pcs');
-      final TextEditingController ingredientsController = TextEditingController();
       final TextEditingController imageController = TextEditingController();
       
       String selectedCategory = '';
@@ -2497,12 +2794,64 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
       XFile? selectedImage;
       String image = '';
       
+      // UPDATED: Add inventory dependency control
+      bool dependsOnInventory = false;
+      
+      // ADD: Ingredients management
+      List<ProductIngredient> ingredients = [];
+      double totalIngredientCost = 0.0;
+      bool hasInsufficientIngredients = false;
+      List<String> insufficientIngredients = [];
+      
+      // FIX: Initialize categories immediately
+      List<ProductCategory> categories = [];
+      bool isCategoriesLoading = true;
+      
+      // Load categories
+      final categoriesList = await CategoryService.getCategoriesByTypeStream('product').first;
+      categories = categoriesList;
+      isCategoriesLoading = false;
+      
+      if (categories.isNotEmpty) {
+        selectedCategory = categories.first.id;
+      }
+      
       await showDialog(
         context: context,
         barrierDismissible: true,
         barrierColor: Colors.black.withOpacity(0.5),
         builder: (context) => StatefulBuilder(
           builder: (context, setState) {
+            // Function to calculate total ingredient cost
+            void calculateTotalCost() {
+              totalIngredientCost = ingredients.fold(0.0, (sum, ing) => sum + ing.totalCost);
+              if (costController.text.isEmpty || double.tryParse(costController.text) == null) {
+                costController.text = totalIngredientCost.toStringAsFixed(2);
+              }
+              setState(() {});
+            }
+            
+            // Function to check ingredient availability
+            Future<void> checkIngredientAvailability() async {
+              hasInsufficientIngredients = false;
+              insufficientIngredients.clear();
+              
+              for (final ingredient in ingredients) {
+                final inventoryItem = await InventoryService.getInventoryItem(ingredient.inventoryId);
+                if (inventoryItem == null || inventoryItem.currentStock < ingredient.quantity) {
+                  hasInsufficientIngredients = true;
+                  insufficientIngredients.add(ingredient.inventoryName);
+                }
+              }
+              setState(() {});
+            }
+            
+            // Initial check
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              calculateTotalCost();
+              checkIngredientAvailability();
+            });
+            
             return AlertDialog(
               backgroundColor: cardColor,
               shape: RoundedRectangleBorder(
@@ -2523,12 +2872,12 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
               ),
               content: SingleChildScrollView(
                 child: SizedBox(
-                  width: Responsive.isMobile(context) ? double.infinity : 500,
+                  width: Responsive.isMobile(context) ? double.infinity : 600, // Increased width
                   child: StreamBuilder<List<ProductCategory>>(
                     stream: CategoryService.getCategoriesByTypeStream('product'),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
+                      if (snapshot.connectionState == ConnectionState.waiting || isCategoriesLoading) {
+                        return _buildDialogSkeleton(context, isDarkMode: isDarkMode);
                       }
                       
                       final categories = snapshot.data ?? [];
@@ -2566,6 +2915,10 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Basic Information Section
+                          _buildSectionHeader('BASIC INFORMATION', primaryColor),
+                          const SizedBox(height: 12),
+                          
                           // Image Upload Section
                           _buildImageUploadSection(
                             context,
@@ -2573,14 +2926,12 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                             (image) {
                               setState(() {
                                 selectedImage = image;
-                                // Clear image URL when selecting local image
                                 imageController.clear();
                               });
                             },
                             (url) {
                               setState(() {
                                 image = url;
-                                // Clear local image when entering URL
                                 selectedImage = null;
                               });
                             },
@@ -2591,7 +2942,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                             imageController,
                           ),
                           
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12),
                           
                           // Product Name
                           TextField(
@@ -2616,43 +2967,13 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                             stream: CategoryService.getCategoriesByTypeStream('product'),
                             builder: (context, snapshot) {
                               if (snapshot.connectionState == ConnectionState.waiting) {
-                                return const Center(child: CircularProgressIndicator());
+                                return _buildDropdownSkeleton(isDarkMode);
                               }
                               
                               final categories = snapshot.data ?? [];
                               
-                              if (categories.isEmpty) {
-                                return Column(
-                                  children: [
-                                    const Text(
-                                      'No product categories found. Please create categories first.',
-                                      style: TextStyle(color: Colors.red),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    ElevatedButton(
-                                      onPressed: () {
-                                        Navigator.pop(context);
-                                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                                          _openCategoryManagement();
-                                        });
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.orange,
-                                      ),
-                                      child: const Text('Manage Categories'),
-                                    ),
-                                  ],
-                                );
-                              }
-                              
-                              // FIX: Set default category to first if not set
-                              String currentCategory = selectedCategory;
-                              if (currentCategory.isEmpty && categories.isNotEmpty) {
-                                currentCategory = categories.first.id;
-                              }
-                              
                               return DropdownButtonFormField<String>(
-                                value: currentCategory.isNotEmpty ? currentCategory : null,
+                                initialValue: selectedCategory.isNotEmpty ? selectedCategory : null,
                                 dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                 style: TextStyle(color: textColor),
                                 decoration: InputDecoration(
@@ -2684,6 +3005,83 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                             },
                           ),
                           
+                          const SizedBox(height: 16),
+                          
+                          // UPDATED: Inventory Dependency Checkbox
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Checkbox(
+                                      value: dependsOnInventory,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          dependsOnInventory = value ?? false;
+                                          if (!dependsOnInventory) {
+                                            // Clear ingredients if not depending on inventory
+                                            ingredients.clear();
+                                            calculateTotalCost();
+                                          }
+                                          // Reset stock controller if changing dependency
+                                          if (dependsOnInventory) {
+                                            stockController.text = '0';
+                                          }
+                                        });
+                                      },
+                                      activeColor: primaryColor,
+                                    ),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Depends on Inventory',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: textColor,
+                                            ),
+                                          ),
+                                          Text(
+                                            dependsOnInventory 
+                                                ? 'Product stock will be calculated from inventory'
+                                                : 'Product stock can be managed independently',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: mutedTextColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                
+                                if (!dependsOnInventory)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8, left: 32),
+                                    child: Text(
+                                      'For products like salads or ready-to-eat items that don\'t require inventory tracking',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: mutedTextColor,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          
                           const SizedBox(height: 12),
                           
                           // Price and Cost Row
@@ -2705,6 +3103,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                   ),
                                   style: TextStyle(color: textColor),
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  onChanged: (_) => setState(() {}),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -2724,6 +3123,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                   ),
                                   style: TextStyle(color: textColor),
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  onChanged: (_) => setState(() {}),
                                 ),
                               ),
                             ],
@@ -2731,14 +3131,14 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                           
                           const SizedBox(height: 12),
                           
-                          // Stock and Reorder Level Row
+                          // UPDATED: Stock and Reorder Level Row with conditional enabling
                           Row(
                             children: [
                               Expanded(
                                 child: TextField(
                                   controller: stockController,
                                   decoration: InputDecoration(
-                                    labelText: 'Initial Stock *',
+                                    labelText: dependsOnInventory ? 'Initial Stock (Not Used)' : 'Initial Stock *',
                                     labelStyle: TextStyle(color: mutedTextColor),
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
@@ -2747,9 +3147,12 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                       borderSide: BorderSide(color: primaryColor),
                                     ),
                                     prefixIcon: Icon(Icons.inventory, color: primaryColor),
+                                    enabled: !dependsOnInventory, // Disable for inventory-dependent
+                                    hintText: dependsOnInventory ? 'Auto-calculated' : 'Enter stock quantity',
                                   ),
                                   style: TextStyle(color: textColor),
                                   keyboardType: TextInputType.number,
+                                  enabled: !dependsOnInventory, // Disable for inventory-dependent
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -2757,7 +3160,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                 child: TextField(
                                   controller: reorderController,
                                   decoration: InputDecoration(
-                                    labelText: 'Reorder Level',
+                                    labelText: dependsOnInventory ? 'Reorder Level (Not Used)' : 'Reorder Level',
                                     labelStyle: TextStyle(color: mutedTextColor),
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
@@ -2766,9 +3169,12 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                       borderSide: BorderSide(color: primaryColor),
                                     ),
                                     prefixIcon: Icon(Icons.warning, color: primaryColor),
+                                    enabled: !dependsOnInventory, // Disable for inventory-dependent
+                                    hintText: dependsOnInventory ? 'N/A for inventory items' : 'Low stock alert',
                                   ),
                                   style: TextStyle(color: textColor),
                                   keyboardType: TextInputType.number,
+                                  enabled: !dependsOnInventory, // Disable for inventory-dependent
                                 ),
                               ),
                             ],
@@ -2813,27 +3219,281 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                             style: TextStyle(color: textColor),
                           ),
                           
-                          const SizedBox(height: 12),
-                          
-                          // Ingredients
-                          TextField(
-                            controller: ingredientsController,
-                            maxLines: 2,
-                            decoration: InputDecoration(
-                              labelText: 'Ingredients (comma separated)',
-                              labelStyle: TextStyle(color: mutedTextColor),
-                              border: OutlineInputBorder(
+                          // UPDATED: Show ingredients section only for inventory-dependent products
+                          if (dependsOnInventory) ...[
+                            const SizedBox(height: 20),
+                            
+                            // INGREDIENTS SECTION
+                            _buildSectionHeader('INGREDIENTS & PRODUCTION', primaryColor),
+                            const SizedBox(height: 12),
+                            
+                            // Cost Breakdown
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
                                 borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                ),
                               ),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide: BorderSide(color: primaryColor),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Cost Breakdown:',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: textColor,
+                                        ),
+                                      ),
+                                      Text(
+                                        '₱${totalIngredientCost.toStringAsFixed(2)}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: primaryColor,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Total Ingredients Cost:',
+                                        style: TextStyle(color: mutedTextColor),
+                                      ),
+                                      Text(
+                                        '₱${totalIngredientCost.toStringAsFixed(2)}',
+                                        style: TextStyle(
+                                          color: textColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Other Costs:',
+                                        style: TextStyle(color: mutedTextColor),
+                                      ),
+                                      Text(
+                                        '₱${(double.tryParse(costController.text) ?? 0) - totalIngredientCost > 0 ? ((double.tryParse(costController.text) ?? 0) - totalIngredientCost).toStringAsFixed(2) : '0.00'}',
+                                        style: TextStyle(
+                                          color: textColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Divider(color: mutedTextColor.withOpacity(0.3)),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Total Product Cost:',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: textColor,
+                                        ),
+                                      ),
+                                      Text(
+                                        '₱${(double.tryParse(costController.text) ?? 0).toStringAsFixed(2)}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (priceController.text.isNotEmpty && double.tryParse(priceController.text) != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            'Profit Margin:',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: textColor,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${((double.parse(priceController.text) - (double.tryParse(costController.text) ?? 0)) / (double.tryParse(costController.text) ?? 1) * 100).toStringAsFixed(1)}%',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.green,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
                               ),
-                              prefixIcon: Icon(Icons.restaurant, color: primaryColor),
-                              helperText: 'Separate with commas: flour,sugar,eggs',
-                              helperStyle: TextStyle(color: mutedTextColor, fontSize: 11),
                             ),
-                            style: TextStyle(color: textColor),
-                          ),
+                            
+                            const SizedBox(height: 12),
+                            
+                            // Inventory Status Warning
+                            if (hasInsufficientIngredients && ingredients.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.warning, color: Colors.red, size: 20),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Insufficient Inventory',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.red,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Some ingredients have insufficient stock:',
+                                      style: TextStyle(color: textColor),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    ...insufficientIngredients.map((ingredient) => Padding(
+                                      padding: const EdgeInsets.only(left: 8, top: 2),
+                                      child: Text(
+                                        '• $ingredient',
+                                        style: const TextStyle(color: Colors.red),
+                                      ),
+                                    )),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'You may need to restock these items before production.',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            
+                            const SizedBox(height: 12),
+                            
+                            // Ingredients List
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Ingredients (${ingredients.length})',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: textColor,
+                                      ),
+                                    ),
+                                    ElevatedButton.icon(
+                                      onPressed: () async {
+                                        await _showAddIngredientDialog(
+                                          context,
+                                          setState,
+                                          ingredients,
+                                          calculateTotalCost,
+                                          checkIngredientAvailability,
+                                          isDarkMode,
+                                          primaryColor,
+                                          textColor,
+                                          mutedTextColor,
+                                        );
+                                      },
+                                      icon: const Icon(Icons.add, size: 16),
+                                      label: const Text('Add Ingredient'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: primaryColor,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                
+                                if (ingredients.isEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.restaurant,
+                                          size: 40,
+                                          color: mutedTextColor,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'No ingredients added yet',
+                                          style: TextStyle(color: mutedTextColor),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Add ingredients to calculate production cost',
+                                          style: TextStyle(
+                                            color: mutedTextColor,
+                                            fontSize: 12,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                else
+                                  ...ingredients.asMap().entries.map((entry) {
+                                    final index = entry.key;
+                                    final ingredient = entry.value;
+                                    return _buildIngredientCard(
+                                      context,
+                                      ingredient,
+                                      index,
+                                      ingredients,
+                                      setState,
+                                      calculateTotalCost,
+                                      checkIngredientAvailability,
+                                      isDarkMode,
+                                      primaryColor,
+                                      textColor,
+                                      mutedTextColor,
+                                    );
+                                  }),
+                              ],
+                            ),
+                          ],
                           
                           const SizedBox(height: 16),
                           
@@ -2873,6 +3533,8 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                       costController.text,
                       stockController.text,
                       selectedCategory,
+                      dependsOnInventory,
+                      ingredients,
                     )) {
                       try {
                         setState(() => _isLoading = true);
@@ -2904,7 +3566,6 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                           }
                           setState(() => _isUploadingImage = false);
                         } else if (image.isNotEmpty) {
-                          // Validate URL format
                           if (ImageUploadService.isValidimage(image)) {
                             finalImage = image;
                           } else {
@@ -2918,6 +3579,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                           }
                         }
                         
+                        // UPDATED: Create product with dependsOnInventory field
                         final newProduct = Product(
                           id: productId,
                           name: nameController.text.trim(),
@@ -2929,11 +3591,8 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                           reorderLevel: int.parse(reorderController.text),
                           unit: unitController.text.trim(),
                           image: finalImage,
-                          ingredients: ingredientsController.text
-                              .split(',')
-                              .map((e) => e.trim())
-                              .where((e) => e.isNotEmpty)
-                              .toList(),
+                          ingredients: dependsOnInventory ? ingredients : null, // Only store ingredients for inventory-dependent products
+                          dependsOnInventory: dependsOnInventory, // ADD THIS
                           isActive: isActive,
                           createdAt: DateTime.now(),
                         );
@@ -2983,6 +3642,597 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
       _isDialogOpen = false;
     }
   }
+  
+  Widget _buildDialogSkeleton(BuildContext context, {bool isDarkMode = false}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Skeleton for image section
+        Container(
+          width: double.infinity,
+          height: 120,
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        
+        // Skeleton for name field
+        Container(
+          width: double.infinity,
+          height: 56,
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        
+        // Skeleton for category dropdown
+        Container(
+          width: double.infinity,
+          height: 56,
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        
+        // Skeleton for price and cost row
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 56,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Container(
+                height: 56,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
+        
+        // Skeleton for buttons
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 40,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Container(
+                height: 40,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildDropdownSkeleton(bool isDarkMode) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.category, color: isDarkMode ? Colors.grey.shade500 : Colors.grey.shade400),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Container(
+              height: 16,
+              decoration: BoxDecoration(
+                color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ),
+          Icon(Icons.arrow_drop_down, color: isDarkMode ? Colors.grey.shade500 : Colors.grey.shade400),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildSectionHeader(String title, Color color) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Center(
+        child: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: color,
+            fontSize: 14,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Future<void> _showAddIngredientDialog(
+    BuildContext context,
+    StateSetter setState,
+    List<ProductIngredient> ingredients,
+    VoidCallback calculateTotalCost,
+    VoidCallback checkIngredientAvailability,
+    bool isDarkMode,
+    Color primaryColor,
+    Color textColor,
+    Color mutedTextColor,
+  ) async {
+    final TextEditingController quantityController = TextEditingController();
+    String? selectedInventoryId;
+    String? selectedInventoryName;
+    double selectedUnitCost = 0.0;
+    String selectedUnit = '';
+    double availableStock = 0.0;
+    
+    List<InventoryItem> inventoryItems = [];
+    
+    // Load inventory items
+    try {
+      final itemsSnapshot = await InventoryService.inventoryCollection
+          .where('active', isEqualTo: true)
+          .get();
+      
+      inventoryItems = itemsSnapshot.docs
+          .map((doc) => InventoryItem.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      print('Error loading inventory items: $e');
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error loading inventory items: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+    
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, dialogSetState) {
+          return AlertDialog(
+            title: Text('Add Ingredient', style: TextStyle(color: textColor)),
+            backgroundColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (inventoryItems.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          Icon(Icons.inventory_outlined, size: 40, color: mutedTextColor),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No active inventory items found',
+                            style: TextStyle(color: mutedTextColor),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Please add inventory items first',
+                            style: TextStyle(color: mutedTextColor, fontSize: 12),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Column(
+                      children: [
+                        // Inventory Item Dropdown - FIXED VERSION
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedInventoryId,
+                          decoration: InputDecoration(
+                            labelText: 'Inventory Item *',
+                            labelStyle: TextStyle(color: mutedTextColor),
+                            border: const OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.inventory, color: primaryColor),
+                          ),
+                          items: inventoryItems.map((item) {
+                            return DropdownMenuItem<String>(
+                              value: item.id,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(item.name, style: TextStyle(color: textColor)),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Stock: ${item.currentStock} ${item.unit} | ₱${item.unitCost}/${item.unit}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: mutedTextColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (String? value) {
+                            if (value != null) {
+                              final selectedItem = inventoryItems.firstWhere(
+                                (item) => item.id == value,
+                                orElse: () => inventoryItems.first,
+                              );
+                              
+                              dialogSetState(() {
+                                selectedInventoryId = selectedItem.id;
+                                selectedInventoryName = selectedItem.name;
+                                selectedUnitCost = selectedItem.unitCost;
+                                selectedUnit = selectedItem.unit;
+                                availableStock = selectedItem.currentStock;
+                              });
+                            }
+                          },
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Quantity Input
+                        TextFormField(
+                          controller: quantityController,
+                          decoration: InputDecoration(
+                            labelText: 'Quantity Required *',
+                            labelStyle: TextStyle(color: mutedTextColor),
+                            border: const OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.scale, color: primaryColor),
+                            suffixText: selectedUnit.isNotEmpty ? selectedUnit : '',
+                            helperText: selectedInventoryId != null
+                                ? 'Available: $availableStock $selectedUnit'
+                                : null,
+                            helperStyle: TextStyle(
+                              color: selectedInventoryId != null && availableStock <= 0
+                                  ? Colors.red
+                                  : Colors.green,
+                            ),
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (value) {
+                            dialogSetState(() {});
+                          },
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Summary
+                        if (selectedInventoryId != null && quantityController.text.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Summary:',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: textColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Item:', style: TextStyle(color: mutedTextColor)),
+                                    Text(selectedInventoryName!, style: TextStyle(color: textColor)),
+                                  ],
+                                ),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Quantity:', style: TextStyle(color: mutedTextColor)),
+                                    Text('${quantityController.text} $selectedUnit',
+                                        style: TextStyle(color: textColor)),
+                                  ],
+                                ),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Unit Cost:', style: TextStyle(color: mutedTextColor)),
+                                    Text('₱$selectedUnitCost/$selectedUnit',
+                                        style: TextStyle(color: textColor)),
+                                  ],
+                                ),
+                                Divider(color: mutedTextColor.withOpacity(0.3)),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Total Cost:', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+                                    Text(
+                                      '₱${(selectedUnitCost * (double.tryParse(quantityController.text) ?? 0)).toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: primaryColor,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                
+                                // Stock Availability Warning
+                                if (availableStock < (double.tryParse(quantityController.text) ?? 0))
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: Colors.red.withOpacity(0.3)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.warning, color: Colors.red, size: 16),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Insufficient stock! Available: $availableStock $selectedUnit',
+                                            style: const TextStyle(
+                                              color: Colors.red,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: selectedInventoryId != null && quantityController.text.isNotEmpty
+                    ? () {
+                        final quantity = double.tryParse(quantityController.text) ?? 0;
+                        if (quantity > 0) {
+                          final ingredient = ProductIngredient(
+                            inventoryId: selectedInventoryId!,
+                            inventoryName: selectedInventoryName!,
+                            quantity: quantity,
+                            unit: selectedUnit,
+                            unitCost: selectedUnitCost,
+                          );
+                          
+                          ingredients.add(ingredient);
+                          calculateTotalCost();
+                          checkIngredientAvailability();
+                          Navigator.pop(context);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please enter a valid quantity'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                ),
+                child: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildIngredientCard(
+    BuildContext context,
+    ProductIngredient ingredient,
+    int index,
+    List<ProductIngredient> ingredients,
+    StateSetter setState,
+    VoidCallback calculateTotalCost,
+    VoidCallback checkIngredientAvailability,
+    bool isDarkMode,
+    Color primaryColor,
+    Color textColor,
+    Color mutedTextColor,
+  ) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ingredient.inventoryName,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${ingredient.quantity} ${ingredient.unit} × ₱${ingredient.unitCost}/${ingredient.unit}',
+                        style: TextStyle(
+                          color: mutedTextColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '₱${ingredient.totalCost.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: primaryColor,
+                        fontSize: 14,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                      onPressed: () {
+                        ingredients.removeAt(index);
+                        calculateTotalCost();
+                        checkIngredientAvailability();
+                        setState(() {});
+                      },
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            
+            // Stock Status (will be updated in real-time)
+            FutureBuilder<InventoryItem?>(
+              future: InventoryService.getInventoryItem(ingredient.inventoryId),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return LinearProgressIndicator(
+                    minHeight: 2,
+                    backgroundColor: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                    valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                  );
+                }
+                
+                if (snapshot.hasData && snapshot.data != null) {
+                  final inventoryItem = snapshot.data!;
+                  final availableStock = inventoryItem.currentStock;
+                  final isSufficient = availableStock >= ingredient.quantity;
+                  final missingQuantity = ingredient.quantity - availableStock;
+                  
+                  return Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isSufficient
+                          ? Colors.green.withOpacity(0.1)
+                          : Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: isSufficient
+                            ? Colors.green.withOpacity(0.3)
+                            : Colors.red.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isSufficient ? Icons.check_circle : Icons.warning,
+                          size: 16,
+                          color: isSufficient ? Colors.green : Colors.red,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            isSufficient
+                                ? 'In Stock: ${availableStock.toStringAsFixed(2)} ${ingredient.unit} available'
+                                : 'Low Stock: ${availableStock.toStringAsFixed(2)}/${ingredient.quantity} ${ingredient.unit} (${missingQuantity.toStringAsFixed(2)} ${ingredient.unit} needed)',
+                            style: TextStyle(
+                              color: isSufficient ? Colors.green : Colors.red,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                
+                return Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.error, size: 16, color: Colors.orange),
+                      SizedBox(width: 8),
+                      Text(
+                        'Inventory item not found',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _editProduct(Product product) async {
     if (_isDialogOpen) return;
@@ -3002,22 +4252,77 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
       final TextEditingController stockController = TextEditingController(text: product.stock.toString());
       final TextEditingController reorderController = TextEditingController(text: product.reorderLevel.toString());
       final TextEditingController unitController = TextEditingController(text: product.unit);
-      final TextEditingController ingredientsController = TextEditingController(
-        text: product.ingredients?.join(', ') ?? ''
-      );
       final TextEditingController imageController = TextEditingController(text: product.image ?? '');
       
-      String selectedCategory = product.category;
+      String selectedCategory = await _getCategoryIdFromProduct(product);
       bool isActive = product.isActive;
       XFile? selectedImage;
       String image = product.image ?? '';
       
+      // UPDATED: Add inventory dependency control
+      bool dependsOnInventory = product.dependsOnInventory;
+
+      // ADD: Ingredients management
+      List<ProductIngredient> ingredients = product.ingredients ?? [];
+      double totalIngredientCost = ingredients.fold(0.0, (sum, ing) => sum + ing.totalCost);
+      bool hasInsufficientIngredients = false;
+      List<String> insufficientIngredients = [];
+      
+      // NEW: Add skeleton loading state for initial category load
+      bool isCategoriesLoading = true;
+      
+      // Load categories initially
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final categories = await CategoryService.getCategoriesByTypeStream('product').first;
+        if (categories.isNotEmpty && mounted) {
+          setState(() {
+            isCategoriesLoading = false;
+          });
+        }
+      });
+      
+      // Initial ingredient availability check
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        hasInsufficientIngredients = false;
+        insufficientIngredients.clear();
+        
+        for (final ingredient in ingredients) {
+          final inventoryItem = await InventoryService.getInventoryItem(ingredient.inventoryId);
+          if (inventoryItem == null || inventoryItem.currentStock < ingredient.quantity) {
+            hasInsufficientIngredients = true;
+            insufficientIngredients.add(ingredient.inventoryName);
+          }
+        }
+        if (mounted) setState(() {});
+      });
+
       await showDialog(
         context: context,
         barrierDismissible: true,
         barrierColor: Colors.black.withOpacity(0.5),
         builder: (context) => StatefulBuilder(
           builder: (context, setState) {
+            // Function to calculate total ingredient cost
+            void calculateTotalCost() {
+              totalIngredientCost = ingredients.fold(0.0, (sum, ing) => sum + ing.totalCost);
+              setState(() {});
+            }
+            
+            // Function to check ingredient availability
+            Future<void> checkIngredientAvailability() async {
+              hasInsufficientIngredients = false;
+              insufficientIngredients.clear();
+              
+              for (final ingredient in ingredients) {
+                final inventoryItem = await InventoryService.getInventoryItem(ingredient.inventoryId);
+                if (inventoryItem == null || inventoryItem.currentStock < ingredient.quantity) {
+                  hasInsufficientIngredients = true;
+                  insufficientIngredients.add(ingredient.inventoryName);
+                }
+              }
+              setState(() {});
+            }
+
             return AlertDialog(
               backgroundColor: cardColor,
               shape: RoundedRectangleBorder(
@@ -3038,12 +4343,12 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
               ),
               content: SingleChildScrollView(
                 child: SizedBox(
-                  width: Responsive.isMobile(context) ? double.infinity : 500,
+                  width: Responsive.isMobile(context) ? double.infinity : 600,
                   child: StreamBuilder<List<ProductCategory>>(
                     stream: CategoryService.getCategoriesByTypeStream('product'),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
+                      if (snapshot.connectionState == ConnectionState.waiting || isCategoriesLoading) {
+                        return _buildDialogSkeleton(context, isDarkMode: isDarkMode);
                       }
                       
                       final categories = snapshot.data ?? [];
@@ -3126,7 +4431,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                             stream: CategoryService.getCategoriesByTypeStream('product'),
                             builder: (context, snapshot) {
                               if (snapshot.connectionState == ConnectionState.waiting) {
-                                return const Center(child: CircularProgressIndicator());
+                                return _buildDropdownSkeleton(isDarkMode);
                               }
                               
                               final categories = snapshot.data ?? [];
@@ -3155,15 +4460,43 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                 );
                               }
                               
-                              // FIX: Check if selectedCategory exists in categories, if not use first category
-                              String currentCategory = selectedCategory;
-                              final categoryExists = categories.any((c) => c.id == selectedCategory);
-                              if (!categoryExists && categories.isNotEmpty) {
-                                currentCategory = categories.first.id;
+                              // FIX: Convert product.category (which is category name) to category ID
+                              // First, find the category by name (since product.category stores the name)
+                              String currentCategoryId = '';
+                              
+                              // Try to find the category by name first (this is what product.category stores)
+                              final categoryByName = categories.firstWhere(
+                                (c) => c.name == product.category,
+                                orElse: () => ProductCategory(
+                                  id: '',
+                                  name: '',
+                                  type: 'product',
+                                  createdAt: DateTime.now(),
+                                ),
+                              );
+                              
+                              if (categoryByName.id.isNotEmpty) {
+                                currentCategoryId = categoryByName.id;
+                              } else {
+                                // If not found by name, try by ID (some products might store ID)
+                                final categoryById = categories.firstWhere(
+                                  (c) => c.id == product.categoryId,
+                                  orElse: () => categories.isNotEmpty ? categories.first : ProductCategory(
+                                    id: '',
+                                    name: '',
+                                    type: 'product',
+                                    createdAt: DateTime.now(),
+                                  ),
+                                );
+                                
+                                currentCategoryId = categoryById.id.isNotEmpty ? categoryById.id : categories.first.id;
                               }
                               
+                              // Update the selectedCategory variable
+                              selectedCategory = currentCategoryId;
+                              
                               return DropdownButtonFormField<String>(
-                                value: currentCategory,
+                                initialValue: currentCategoryId,
                                 dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                 style: TextStyle(color: textColor),
                                 decoration: InputDecoration(
@@ -3193,6 +4526,83 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                 },
                               );
                             },
+                          ),
+                          
+                          const SizedBox(height: 16),
+                          
+                          // UPDATED: Inventory Dependency Checkbox
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Checkbox(
+                                      value: dependsOnInventory,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          dependsOnInventory = value ?? false;
+                                          if (!dependsOnInventory) {
+                                            // Clear ingredients if not depending on inventory
+                                            ingredients.clear();
+                                            calculateTotalCost();
+                                          }
+                                          // Reset stock controller if changing dependency
+                                          if (dependsOnInventory) {
+                                            stockController.text = '0';
+                                          }
+                                        });
+                                      },
+                                      activeColor: primaryColor,
+                                    ),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Depends on Inventory',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: textColor,
+                                            ),
+                                          ),
+                                          Text(
+                                            dependsOnInventory 
+                                                ? 'Product stock will be calculated from inventory'
+                                                : 'Product stock can be managed independently',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: mutedTextColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                
+                                if (!dependsOnInventory)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8, left: 32),
+                                    child: Text(
+                                      'For products like salads or ready-to-eat items that don\'t require inventory tracking',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: mutedTextColor,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                           
                           const SizedBox(height: 12),
@@ -3242,14 +4652,14 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                           
                           const SizedBox(height: 12),
                           
-                          // Stock and Reorder Level Row
+                          // UPDATED: Stock and Reorder Level Row with conditional enabling
                           Row(
                             children: [
                               Expanded(
                                 child: TextField(
                                   controller: stockController,
                                   decoration: InputDecoration(
-                                    labelText: 'Current Stock *',
+                                    labelText: dependsOnInventory ? 'Current Stock (Not Used)' : 'Current Stock *',
                                     labelStyle: TextStyle(color: mutedTextColor),
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
@@ -3258,9 +4668,12 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                       borderSide: BorderSide(color: primaryColor),
                                     ),
                                     prefixIcon: Icon(Icons.inventory, color: primaryColor),
+                                    enabled: !dependsOnInventory, // Disable for inventory-dependent
+                                    hintText: dependsOnInventory ? 'Auto-calculated' : 'Enter stock quantity',
                                   ),
                                   style: TextStyle(color: textColor),
                                   keyboardType: TextInputType.number,
+                                  enabled: !dependsOnInventory, // Disable for inventory-dependent
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -3268,7 +4681,7 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                 child: TextField(
                                   controller: reorderController,
                                   decoration: InputDecoration(
-                                    labelText: 'Reorder Level',
+                                    labelText: dependsOnInventory ? 'Reorder Level (Not Used)' : 'Reorder Level',
                                     labelStyle: TextStyle(color: mutedTextColor),
                                     border: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(8),
@@ -3277,9 +4690,12 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                                       borderSide: BorderSide(color: primaryColor),
                                     ),
                                     prefixIcon: Icon(Icons.warning, color: primaryColor),
+                                    enabled: !dependsOnInventory, // Disable for inventory-dependent
+                                    hintText: dependsOnInventory ? 'N/A for inventory items' : 'Low stock alert',
                                   ),
                                   style: TextStyle(color: textColor),
                                   keyboardType: TextInputType.number,
+                                  enabled: !dependsOnInventory, // Disable for inventory-dependent
                                 ),
                               ),
                             ],
@@ -3324,27 +4740,281 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                             style: TextStyle(color: textColor),
                           ),
                           
-                          const SizedBox(height: 12),
-                          
-                          // Ingredients
-                          TextField(
-                            controller: ingredientsController,
-                            maxLines: 2,
-                            decoration: InputDecoration(
-                              labelText: 'Ingredients (comma separated)',
-                              labelStyle: TextStyle(color: mutedTextColor),
-                              border: OutlineInputBorder(
+                          // UPDATED: Show ingredients section only for inventory-dependent products
+                          if (dependsOnInventory) ...[
+                            const SizedBox(height: 20),
+                            
+                            // INGREDIENTS SECTION
+                            _buildSectionHeader('INGREDIENTS & PRODUCTION', primaryColor),
+                            const SizedBox(height: 12),
+                            
+                            // Cost Breakdown
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
                                 borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                ),
                               ),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide: BorderSide(color: primaryColor),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Cost Breakdown:',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: textColor,
+                                        ),
+                                      ),
+                                      Text(
+                                        '₱${totalIngredientCost.toStringAsFixed(2)}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: primaryColor,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Total Ingredients Cost:',
+                                        style: TextStyle(color: mutedTextColor),
+                                      ),
+                                      Text(
+                                        '₱${totalIngredientCost.toStringAsFixed(2)}',
+                                        style: TextStyle(
+                                          color: textColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Other Costs:',
+                                        style: TextStyle(color: mutedTextColor),
+                                      ),
+                                      Text(
+                                        '₱${(double.tryParse(costController.text) ?? 0) - totalIngredientCost > 0 ? ((double.tryParse(costController.text) ?? 0) - totalIngredientCost).toStringAsFixed(2) : '0.00'}',
+                                        style: TextStyle(
+                                          color: textColor,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Divider(color: mutedTextColor.withOpacity(0.3)),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Total Product Cost:',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: textColor,
+                                        ),
+                                      ),
+                                      Text(
+                                        '₱${(double.tryParse(costController.text) ?? 0).toStringAsFixed(2)}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (priceController.text.isNotEmpty && double.tryParse(priceController.text) != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            'Profit Margin:',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: textColor,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${((double.parse(priceController.text) - (double.tryParse(costController.text) ?? 0)) / (double.tryParse(costController.text) ?? 1) * 100).toStringAsFixed(1)}%',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.green,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
                               ),
-                              prefixIcon: Icon(Icons.restaurant, color: primaryColor),
-                              helperText: 'Separate with commas: flour,sugar,eggs',
-                              helperStyle: TextStyle(color: mutedTextColor, fontSize: 11),
                             ),
-                            style: TextStyle(color: textColor),
-                          ),
+                            
+                            const SizedBox(height: 12),
+                            
+                            // Inventory Status Warning
+                            if (hasInsufficientIngredients && ingredients.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.warning, color: Colors.red, size: 20),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Insufficient Inventory',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.red,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Some ingredients have insufficient stock:',
+                                      style: TextStyle(color: textColor),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    ...insufficientIngredients.map((ingredient) => Padding(
+                                      padding: const EdgeInsets.only(left: 8, top: 2),
+                                      child: Text(
+                                        '• $ingredient',
+                                        style: const TextStyle(color: Colors.red),
+                                      ),
+                                    )),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'You may need to restock these items before production.',
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            
+                            const SizedBox(height: 12),
+                            
+                            // Ingredients List
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Ingredients (${ingredients.length})',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: textColor,
+                                      ),
+                                    ),
+                                    ElevatedButton.icon(
+                                      onPressed: () async {
+                                        await _showAddIngredientDialog(
+                                          context,
+                                          setState,
+                                          ingredients,
+                                          calculateTotalCost,
+                                          checkIngredientAvailability,
+                                          isDarkMode,
+                                          primaryColor,
+                                          textColor,
+                                          mutedTextColor,
+                                        );
+                                      },
+                                      icon: const Icon(Icons.add, size: 16),
+                                      label: const Text('Add Ingredient'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: primaryColor,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                
+                                if (ingredients.isEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.restaurant,
+                                          size: 40,
+                                          color: mutedTextColor,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'No ingredients added yet',
+                                          style: TextStyle(color: mutedTextColor),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Add ingredients to calculate production cost',
+                                          style: TextStyle(
+                                            color: mutedTextColor,
+                                            fontSize: 12,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                else
+                                  ...ingredients.asMap().entries.map((entry) {
+                                    final index = entry.key;
+                                    final ingredient = entry.value;
+                                    return _buildIngredientCard(
+                                      context,
+                                      ingredient,
+                                      index,
+                                      ingredients,
+                                      setState,
+                                      calculateTotalCost,
+                                      checkIngredientAvailability,
+                                      isDarkMode,
+                                      primaryColor,
+                                      textColor,
+                                      mutedTextColor,
+                                    );
+                                  }),
+                              ],
+                            ),
+                          ],
                           
                           const SizedBox(height: 16),
                           
@@ -3416,6 +5086,8 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                       costController.text,
                       stockController.text,
                       selectedCategory,
+                      dependsOnInventory,
+                      ingredients,
                     )) {
                       try {
                         setState(() => _isLoading = true);
@@ -3485,11 +5157,8 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
                           reorderLevel: int.parse(reorderController.text),
                           unit: unitController.text.trim(),
                           image: finalImage,
-                          ingredients: ingredientsController.text
-                              .split(',')
-                              .map((e) => e.trim())
-                              .where((e) => e.isNotEmpty)
-                              .toList(),
+                          ingredients: dependsOnInventory ? ingredients : null, // Only store ingredients for inventory-dependent products
+                          dependsOnInventory: dependsOnInventory, // ADD THIS
                           isActive: isActive,
                           updatedAt: DateTime.now(),
                         );
@@ -3539,6 +5208,53 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
     } finally {
       _isDialogOpen = false;
     }
+  }
+
+  Future<Map<String, double>> _checkInventoryAvailability(List<ProductIngredient> ingredients) async {
+    final Map<String, double> availability = {};
+    
+    for (final ingredient in ingredients) {
+      final inventoryItem = await InventoryService.getInventoryItem(ingredient.inventoryId);
+      if (inventoryItem != null) {
+        availability[ingredient.inventoryId] = inventoryItem.currentStock;
+      } else {
+        availability[ingredient.inventoryId] = 0;
+      }
+    }
+    
+    return availability;
+  }
+
+  Future<String> _getCategoryIdFromProduct(Product product) async {
+    final categories = await CategoryService.getCategoriesByTypeStream('product').first;
+    
+    // First try to find by name (since product.category stores name)
+    final categoryByName = categories.firstWhere(
+      (c) => c.name == product.category,
+      orElse: () => ProductCategory(
+        id: '',
+        name: '',
+        type: 'product',
+        createdAt: DateTime.now(),
+      ),
+    );
+    
+    if (categoryByName.id.isNotEmpty) {
+      return categoryByName.id;
+    }
+    
+    // If not found by name, try by ID
+    final categoryById = categories.firstWhere(
+      (c) => c.id == product.categoryId,
+      orElse: () => categories.isNotEmpty ? categories.first : ProductCategory(
+        id: '',
+        name: '',
+        type: 'product',
+        createdAt: DateTime.now(),
+      ),
+    );
+    
+    return categoryById.id;
   }
 
   Future<void> _toggleProductStatus(Product product) async {
@@ -3642,6 +5358,8 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
     String cost,
     String stock,
     String category,
+    bool dependsOnInventory, // ADD THIS PARAMETER
+    List<ProductIngredient> ingredients, // ADD THIS PARAMETER
   ) {
     if (name.isEmpty) {
       _showErrorSnackbar('Please enter a product name');
@@ -3663,8 +5381,16 @@ class _ProductManagementState extends State<ProductManagement> with SettingsMixi
       return false;
     }
     
-    if (stock.isEmpty || int.tryParse(stock) == null) {
-      _showErrorSnackbar('Please enter a valid stock quantity');
+    if (!dependsOnInventory) {
+      // For non-inventory products, validate stock
+      if (stock.isEmpty || int.tryParse(stock) == null) {
+        _showErrorSnackbar('Please enter a valid stock quantity');
+        return false;
+      }
+    }
+    
+    if (dependsOnInventory && ingredients.isEmpty) {
+      _showErrorSnackbar('Please add at least one ingredient for inventory-dependent products');
       return false;
     }
     

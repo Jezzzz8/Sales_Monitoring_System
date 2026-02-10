@@ -21,7 +21,6 @@ class SalesService {
       final startTimestamp = Timestamp.fromDate(startDate);
       final endTimestamp = Timestamp.fromDate(endDate);
       
-      print('Fetching transactions from $startDate to $endDate');
       
       // Get all completed transactions in date range
       final transactionsSnapshot = await transactionsCollection
@@ -30,7 +29,6 @@ class SalesService {
           .orderBy('date', descending: true)
           .get();
 
-      print('Found ${transactionsSnapshot.docs.length} transactions');
       
       final transactions = transactionsSnapshot.docs
           .map((doc) => TransactionModel.fromFirestore(doc))
@@ -60,7 +58,6 @@ class SalesService {
             productsMap[productId] = productDoc.data() as Map<String, dynamic>;
           }
         } catch (e) {
-          print('Error fetching product $productId: $e');
         }
       }
 
@@ -95,7 +92,6 @@ class SalesService {
 
         // Process items for category and product analysis
         for (final item in transaction.items) {
-          print('Processing item: ${item.productName} - ₱${item.total}');
           
           // Get product details from pre-fetched map
           final productData = productsMap[item.productId];
@@ -118,7 +114,6 @@ class SalesService {
           }
         }
 
-        print('Product: $productName, Category: $categoryName');
 
         // Category sales - now using correct category name
         categorySales[categoryName] = 
@@ -139,10 +134,6 @@ class SalesService {
         productSales[item.productId]!['totalQuantity'] += item.quantity;
       }
     }
-
-    print('Total sales: ₱$totalSales');
-    print('Total transactions: $totalTransactions');
-    print('Categories found: ${categorySales.keys.toList()}');
 
     // Calculate average sale
     final averageSale = totalTransactions > 0 ? totalSales / totalTransactions : 0;
@@ -195,8 +186,6 @@ class SalesService {
       'transactions': transactions,
     };
   } catch (e) {
-    print('Error getting sales analytics: $e');
-    print('Error stack trace: ${e.toString()}');
     return {
       'totalSales': 0.0,
       'totalTransactions': 0,
@@ -297,7 +286,6 @@ class SalesService {
         },
       };
     } catch (e) {
-      print('Error getting period comparison: $e');
       return {
         'current': {},
         'previous': {},
@@ -342,7 +330,6 @@ class SalesService {
             : [],
       };
     } catch (e) {
-      print('Error getting product performance: $e');
       return {
         'products': [],
         'totalProductsAnalyzed': 0,
@@ -358,7 +345,6 @@ class SalesService {
       final analytics = await getSalesAnalytics(startDate, endDate);
       return analytics;
     } catch (e) {
-      print('Error getting sales analytics with limit: $e');
       return {
         'totalSales': 0.0,
         'totalTransactions': 0,
@@ -378,14 +364,12 @@ class SalesService {
       final analytics = await getSalesAnalytics(startDate, endDate);
       final topCategories = analytics['topCategories'] as List<dynamic>;
 
-      print('Raw top categories: $topCategories');
 
       // Fetch all categories from database
       final categoriesSnapshot = await categoriesCollection
           .where('type', isEqualTo: 'product')
           .get();
 
-      print('Fetched ${categoriesSnapshot.docs.length} categories from DB');
 
       // Create category map
       final Map<String, ProductCategory> categoryMap = {};
@@ -401,14 +385,12 @@ class SalesService {
             categoryMap[name] = category;
           }
         } catch (e) {
-          print('Error parsing category document: $e');
         }
       }
 
       // Add category details and colors
       final enhancedCategories = topCategories.map((category) {
         final categoryName = category['name'] as String;
-        print('Processing category: $categoryName');
         
         // Try to find category (case-insensitive)
         ProductCategory? categoryData;
@@ -426,7 +408,6 @@ class SalesService {
         };
       }).toList();
 
-      print('Enhanced categories: $enhancedCategories');
 
       return {
         'categories': enhancedCategories,
@@ -434,8 +415,6 @@ class SalesService {
         'categoryDiversity': topCategories.length,
       };
     } catch (e) {
-      print('Error getting category performance: $e');
-      print('Stack trace: ${e.toString()}');
       return {
         'categories': [],
         'dominantCategory': null,
@@ -483,7 +462,6 @@ class SalesService {
         'busyPeriods': _identifyBusyPeriods(hourlyData),
       };
     } catch (e) {
-      print('Error getting hourly performance: $e');
       return {
         'hourlyData': [],
         'peakHour': -1,
@@ -564,7 +542,6 @@ class SalesService {
             categorySales[categoryName] = (categorySales[categoryName] ?? 0) + item.total;
           }
         } catch (e) {
-          print('Error in _calculateAnalyticsFromTransactions: $e');
         }
       }
     }
@@ -624,7 +601,7 @@ class SalesService {
   static Future<Map<String, dynamic>> getSalesForecast(int daysAhead) async {
     try {
       final now = DateTime.now();
-      final historicalStart = now.subtract(Duration(days: 30)); // Last 30 days
+      final historicalStart = now.subtract(const Duration(days: 30)); // Last 30 days
       final historicalEnd = now;
 
       final historicalData = await getSalesAnalytics(historicalStart, historicalEnd);
@@ -662,7 +639,6 @@ class SalesService {
         'trend': _calculateTrend(dailyData),
       };
     } catch (e) {
-      print('Error getting sales forecast: $e');
       return {
         'forecast': [],
         'confidence': 0,

@@ -11,6 +11,7 @@ import '../utils/responsive.dart';
 import '../services/sales_service.dart';
 import '../services/transaction_service.dart';
 import '../services/category_service.dart';
+import '../widgets/top_loading_indicator.dart';
 
 class SalesMonitoring extends StatefulWidget {
   const SalesMonitoring({super.key});
@@ -21,7 +22,7 @@ class SalesMonitoring extends StatefulWidget {
 
 class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
   Map<String, dynamic> _analyticsData = {};
-  DateTime _selectedDate = DateTime.now();
+  final DateTime _selectedDate = DateTime.now();
   String _selectedView = 'Daily';
   String _selectedCategory = 'All';
   
@@ -31,7 +32,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
   bool _isInitialLoad = true;
   
   // Analytics data - with caching
-  Map<String, dynamic> _cachedAnalytics = {};
+  final Map<String, dynamic> _cachedAnalytics = {};
   List<ProductCategory> _productCategories = [];
   List<Map<String, dynamic>> _categorySalesData = [];
   List<Map<String, dynamic>> _dailySalesData = [];
@@ -61,9 +62,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     setState(() => _isLoadingCategories = true);
     try {
       _productCategories = await CategoryService.getProductCategories();
-      print('Loaded ${_productCategories.length} product categories');
     } catch (e) {
-      print('Error loading categories: $e');
       _productCategories = [];
     }
     setState(() => _isLoadingCategories = false);
@@ -118,22 +117,16 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
         _processDailySalesData();
         _processHourlyData();
 
-        print('Category Sales Data processed:');
         for (final category in _categorySalesData) {
-          print('  - ${category['category']}: ₱${category['sales']} (${category['percentage']}%)');
         }
       });
 
-      print('Analytics loaded: Total sales: ${_totalSales.toStringAsFixed(2)}');
-      print('Categories found: ${_categorySalesData.length}');
       
       // Reset flags
       _shouldReloadAnalytics = false;
       _lastSelectedView = _selectedView;
       
-    } catch (e, stackTrace) {
-      print('Error loading analytics: $e');
-      print('Stack trace: $stackTrace');
+    } catch (e) {
       
       // Create safe empty data
       final emptyAnalytics = {
@@ -244,7 +237,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
         'hourlyData': summary['hourlyData'] ?? [],
       });
     } catch (e) {
-      print('Error in optimized weekly analytics: $e');
       final analytics = await SalesService.getWeeklyAnalytics();
       return _sanitizeAnalyticsData(analytics);
     }
@@ -267,7 +259,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
       
       return _sanitizeAnalyticsData(analytics);
     } catch (e) {
-      print('Error in optimized monthly analytics: $e');
       final analytics = await SalesService.getMonthlyAnalytics();
       return _sanitizeAnalyticsData(analytics);
     }
@@ -277,8 +268,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     final rawCategories = _analyticsData['topCategories'] as List<dynamic>? ?? [];
     final categorySales = _analyticsData['categorySales'] as Map<String, dynamic>? ?? {};
     
-    print('Raw category sales data: $categorySales');
-    print('Product categories count: ${_productCategories.length}');
     
     // Create a list to hold all categories with sales
     final List<Map<String, dynamic>> allCategoriesWithSales = [];
@@ -386,7 +375,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
       _categorySalesData = allCategoriesWithSales;
     }
     
-    print('Processed ${_categorySalesData.length} categories for display');
   }
 
   void _processDailySalesData() {
@@ -474,7 +462,8 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
   }
 
   double get _averageSale {
-    return (_analyticsData['averageSale'] as double?) ?? 0.0;
+    if (_totalTransactions == 0) return 0.0;
+    return _totalSales / _totalTransactions;
   }
 
   double get _taxRate {
@@ -486,17 +475,19 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
   }
 
   double get _totalTax {
-    return _netSales * (_taxRate / 100);
+    // Calculate tax included in the total sales
+    return _netSales * (_taxRate / (100 + _taxRate));
   }
 
   double get _totalRevenue {
-    return _netSales + _totalTax;
+    // Revenue is net sales minus tax (since tax is already included in prices)
+    return _netSales - _totalTax;
   }
 
   double get _averageDailySales {
     if (_dailySalesData.isEmpty) return 0.0;
     final totalDays = _dailySalesData.length;
-    return _totalRevenue / totalDays;
+    return _totalSales / totalDays;
   }
 
   double get _highestSale {
@@ -520,15 +511,16 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
       }
     }
     
-    return maxSales * (1 + _taxRate / 100);
+    return maxSales; // Don't add tax back, since it's already included
+  }
+
+  // ADD THIS METHOD: Check if we're loading initial data
+  bool get _isLoadingData {
+    return _isLoadingAnalytics || _isLoadingCategories || _isInitialLoad;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isInitialLoad) {
-      return _buildSkeletonScreen(context);
-    }
-    
     final primaryColor = getPrimaryColor();
     final isMobile = Responsive.isMobile(context);
     final isTablet = Responsive.isTablet(context);
@@ -541,147 +533,160 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     final textColor = isDarkMode ? Colors.white : Colors.black87;
     final mutedTextColor = isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600;
     
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            padding: Responsive.getScreenPadding(context),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Quick Stats Grid
-                  if (_isLoadingAnalytics)
-                    _buildSkeletonStatsGrid(context, isMobile, isDarkMode, cardColor)
-                  else
-                    Responsive.buildResponsiveCardGrid(
-                      context: context,
-                      title: 'SALES OVERVIEW',
-                      titleColor: primaryColor,
-                      centerTitle: true,
-                      cards: [
-                        _buildStatCard(
-                          'Total Revenue',
-                          '₱${_totalRevenue.toStringAsFixed(2)}',
-                          Icons.attach_money,
-                          Colors.green,
-                          context,
-                          subtitle: 'Net: ₱${_netSales.toStringAsFixed(2)}\nTax: ₱${_totalTax.toStringAsFixed(2)}',
-                          isDarkMode: isDarkMode,
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: backgroundColor,
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                padding: Responsive.getScreenPadding(context),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Quick Stats Grid
+                      if (_isLoadingAnalytics)
+                        _buildSkeletonStatsGrid(context, isMobile, isDarkMode, cardColor)
+                      else
+                        Responsive.buildResponsiveCardGrid(
+                          context: context,
+                          title: 'SALES OVERVIEW',
+                          titleColor: primaryColor,
+                          centerTitle: true,
+                          cards: [
+                            _buildStatCard(
+                              'Net Revenue',
+                              '₱${_totalRevenue.toStringAsFixed(2)}',
+                              Icons.attach_money,
+                              Colors.green,
+                              context,
+                              subtitle: 'Sales: ₱${_netSales.toStringAsFixed(2)}\nTax: ₱${_totalTax.toStringAsFixed(2)}',
+                              isDarkMode: isDarkMode,
+                            ),
+                            _buildStatCard(
+                              'Avg Daily Sales',
+                              '₱${_averageDailySales.toStringAsFixed(2)}',
+                              Icons.trending_up,
+                              Colors.blue,
+                              context,
+                              subtitle: 'Incl. $_taxRate% tax',
+                              isDarkMode: isDarkMode,
+                            ),
+                            _buildStatCard(
+                              'Total Transactions',
+                              '$_totalTransactions',
+                              Icons.receipt,
+                              Colors.orange,
+                              context,
+                              subtitle: 'Avg: ₱${_averageSale.toStringAsFixed(2)}',
+                              isDarkMode: isDarkMode,
+                            ),
+                            _buildStatCard(
+                              'Top Category',
+                              _categorySalesData.isNotEmpty 
+                                  ? _categorySalesData.first['category'].toString().split(' ').first
+                                  : 'N/A',
+                              Icons.category,
+                              Colors.purple,
+                              context,
+                              subtitle: _categorySalesData.isNotEmpty
+                                  ? '${_categorySalesData.first['percentage'].toStringAsFixed(1)}% of sales'
+                                  : 'No data',
+                              isDarkMode: isDarkMode,
+                            ),
+                          ],
                         ),
-                        _buildStatCard(
-                          'Avg Daily Sales',
-                          '₱${_averageDailySales.toStringAsFixed(2)}',
-                          Icons.trending_up,
-                          Colors.blue,
-                          context,
-                          subtitle: 'Incl. $_taxRate% tax',
-                          isDarkMode: isDarkMode,
-                        ),
-                        _buildStatCard(
-                          'Total Transactions',
-                          '$_totalTransactions',
-                          Icons.receipt,
-                          Colors.orange,
-                          context,
-                          subtitle: 'Avg: ₱${_averageSale.toStringAsFixed(2)}',
-                          isDarkMode: isDarkMode,
-                        ),
-                        _buildStatCard(
-                          'Top Category',
-                          _categorySalesData.isNotEmpty 
-                              ? _categorySalesData.first['category'].toString().split(' ').first
-                              : 'N/A',
-                          Icons.category,
-                          Colors.purple,
-                          context,
-                          subtitle: _categorySalesData.isNotEmpty
-                              ? '${_categorySalesData.first['percentage'].toStringAsFixed(1)}% of sales'
-                              : 'No data',
-                          isDarkMode: isDarkMode,
-                        ),
-                      ],
-                    ),
 
-                  const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                  // Filters Card
-                  _buildFiltersCard(
-                    primaryColor,
-                    isMobile,
-                    isDarkMode,
-                    cardColor,
-                    textColor,
-                    mutedTextColor,
-                    context,
+                      // Filters Card
+                      _buildFiltersCard(
+                        primaryColor,
+                        isMobile,
+                        isDarkMode,
+                        cardColor,
+                        textColor,
+                        mutedTextColor,
+                        context,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // SALES TREND CHART (ALONE) - MOVED TO TOP
+                      if (_isLoadingAnalytics)
+                        _buildSkeletonSalesTrendChart(context, isMobile, isDarkMode, cardColor)
+                      else
+                        _buildSalesTrendChart(
+                          primaryColor,
+                          isMobile,
+                          isDarkMode,
+                          cardColor,
+                          textColor,
+                          mutedTextColor,
+                          context,
+                        ),
+
+                      const SizedBox(height: 16),
+
+                      // HOURLY SALES PERFORMANCE & CATEGORY DISTRIBUTION (SIDE BY SIDE)
+                      if (_isLoadingAnalytics)
+                        _buildSkeletonCombinedCharts(context, isMobile, isDarkMode, cardColor)
+                      else if (!isMobile)
+                        _buildDesktopCombinedCharts(primaryColor, isDarkMode, cardColor, textColor, context)
+                      else
+                        _buildMobileCombinedCharts(primaryColor, isMobile, isDarkMode, cardColor, textColor, context),
+
+                      const SizedBox(height: 16),
+
+                      // Tax Breakdown
+                      if (_isLoadingAnalytics)
+                        _buildSkeletonTaxBreakdown(context, isMobile, isTablet, isDesktop, isDarkMode, cardColor)
+                      else
+                        _buildTaxBreakdownCard(
+                          primaryColor,
+                          isMobile,
+                          isTablet,
+                          isDesktop,
+                          isDarkMode,
+                          cardColor,
+                          textColor,
+                          mutedTextColor,
+                          context,
+                        ),
+
+                      const SizedBox(height: 16),
+
+                      // Business Insights
+                      if (_isLoadingAnalytics)
+                        _buildSkeletonBusinessInsights(context, isDarkMode, cardColor)
+                      else
+                        _buildBusinessInsights(
+                          primaryColor,
+                          isDarkMode,
+                          cardColor,
+                          textColor,
+                          mutedTextColor,
+                          context,
+                        ),
+                    ],
                   ),
-
-                  const SizedBox(height: 16),
-
-                  // Sales Analysis Charts
-                  if (_isLoadingAnalytics)
-                    _buildSkeletonCharts(context, isMobile, isDarkMode, cardColor)
-                  else if (!isMobile)
-                    _buildDesktopCharts(primaryColor, isDarkMode, cardColor, textColor, context)
-                  else
-                    _buildMobileCharts(primaryColor, isMobile, isDarkMode, cardColor, textColor, context),
-
-                  const SizedBox(height: 16),
-
-                  // Peak Hours Line Graph
-                  if (_isLoadingAnalytics)
-                    _buildSkeletonPeakHoursGraph(context, isMobile, isDarkMode, cardColor)
-                  else
-                    _buildPeakHoursLineGraph(
-                      primaryColor,
-                      isMobile,
-                      isDarkMode,
-                      cardColor,
-                      textColor,
-                      mutedTextColor,
-                      context,
-                    ),
-
-                  const SizedBox(height: 16),
-
-                  // Tax Breakdown
-                  if (_isLoadingAnalytics)
-                    _buildSkeletonTaxBreakdown(context, isMobile, isTablet, isDesktop, isDarkMode, cardColor)
-                  else
-                    _buildTaxBreakdownCard(
-                      primaryColor,
-                      isMobile,
-                      isTablet,
-                      isDesktop,
-                      isDarkMode,
-                      cardColor,
-                      textColor,
-                      mutedTextColor,
-                      context,
-                    ),
-
-                  const SizedBox(height: 16),
-
-                  // Business Insights
-                  if (_isLoadingAnalytics)
-                    _buildSkeletonBusinessInsights(context, isDarkMode, cardColor)
-                  else
-                    _buildBusinessInsights(
-                      primaryColor,
-                      isDarkMode,
-                      cardColor,
-                      textColor,
-                      mutedTextColor,
-                      context,
-                    ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+                ),
+              );
+            },
+          ),
+        ),
+        
+        // ADD TOP LOADING INDICATOR (like Facebook) - SIMILAR TO POS TRANSACTION
+        if (_isLoadingData)
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: TopLoadingIndicator(),
+          ),
+      ],
     );
   }
 
@@ -701,7 +706,76 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
 
   // ========== FL_CHART Chart Components ==========
 
-  Widget _buildDesktopCharts(Color primaryColor, bool isDarkMode, Color cardColor, Color textColor, BuildContext context) {
+  Widget _buildSalesTrendChart(
+    Color primaryColor,
+    bool isMobile,
+    bool isDarkMode,
+    Color cardColor,
+    Color textColor,
+    Color mutedTextColor,
+    BuildContext context,
+  ) {
+    return Container(
+      constraints: BoxConstraints(minHeight: isMobile ? 400 : 450),
+      child: Card(
+        elevation: isDarkMode ? 2 : 3,
+        color: cardColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+        child: Padding(
+          padding: Responsive.getCardPadding(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.timeline, color: primaryColor, size: 24),
+                  const SizedBox(width: 8),
+                  Text(
+                    'SALES PERFORMANCE',
+                    style: TextStyle(
+                      fontSize: Responsive.getTitleFontSize(context),
+                      fontWeight: FontWeight.bold,
+                      color: primaryColor, // Use primaryColor for title
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Track your sales performance over time',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: mutedTextColor,
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              Container(
+                height: isMobile ? 250 : 300,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade900.withOpacity(0.5) : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  ),
+                ),
+                child: _buildBarChart(primaryColor, isDarkMode, textColor, context),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopCombinedCharts(Color primaryColor, bool isDarkMode, Color cardColor, Color textColor, BuildContext context) {
     return Container(
       constraints: BoxConstraints(
         minHeight: 400,
@@ -747,18 +821,18 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Bar Chart
+                    // HOURLY SALES PERFORMANCE on LEFT
                     Expanded(
                       flex: 2,
-                      child: _buildBarChart(primaryColor, isDarkMode, textColor, context),
+                      child: _buildHourlySalesChart(primaryColor, isDarkMode, textColor, context),
                     ),
                     
                     const SizedBox(width: 16),
                     
-                    // Pie Chart
+                    // CATEGORY DISTRIBUTION on RIGHT
                     Expanded(
                       flex: 2,
-                      child: _buildPieChart(primaryColor, isDarkMode, textColor, context),
+                      child: _buildCategoryDistributionChart(primaryColor, isDarkMode, textColor, context),
                     ),
                   ],
                 ),
@@ -774,7 +848,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     final displayedData = _dailySalesData.take(7).toList();
     
     if (displayedData.isEmpty) {
-      return _buildEmptyChart('SALES TREND', 'No sales data available', Icons.bar_chart, primaryColor, isDarkMode, textColor);
+      return _buildEmptyChart('No sales data available', Icons.bar_chart, primaryColor, isDarkMode, textColor);
     }
     
     // Calculate max sales for scaling
@@ -822,7 +896,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
         space: 4, // Space between chart and text
         meta: meta,
         child: Text(
-          label, // Replace with your logic to get the label
+          label,
           style: TextStyle(
             fontSize: 10,
             color: isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600,
@@ -860,7 +934,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
               style: TextStyle(
                 fontSize: Responsive.getSubtitleFontSize(context),
                 fontWeight: FontWeight.bold,
-                color: textColor,
+                color: primaryColor, // Use primaryColor for title
               ),
             ),
             const Spacer(),
@@ -884,6 +958,98 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
         const SizedBox(height: 12),
         
         Expanded(
+          child: BarChart(
+            BarChartData(
+              alignment: BarChartAlignment.spaceAround,
+              maxY: maxSales * 1.1, // Add 10% padding
+              minY: 0,
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  getTooltipColor: (group) => isDarkMode ? Colors.grey.shade800 : Colors.white,
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    final sales = rod.toY;
+                    final data = displayedData[group.x.toInt()];
+                    final label = data['formattedDate'] as String;
+                    return BarTooltipItem(
+                      '$label\n₱${sales.toStringAsFixed(2)}',
+                      TextStyle(
+                        color: primaryColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              titlesData: FlTitlesData(
+                show: true,
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: getLeftTitles,
+                    reservedSize: 40,
+                    interval: maxSales / 4,
+                  ),
+                ),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: getBottomTitles,
+                    reservedSize: 30,
+                  ),
+                ),
+              ),
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                horizontalInterval: maxSales / 4,
+                getDrawingHorizontalLine: (value) {
+                  return FlLine(
+                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                    strokeWidth: 0.5,
+                  );
+                },
+              ),
+              borderData: FlBorderData(
+                show: false,
+              ),
+              barGroups: barGroups,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHourlySalesChart(Color primaryColor, bool isDarkMode, Color textColor, BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.access_time, color: primaryColor, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              'HOURLY SALES PERFORMANCE',
+              style: TextStyle(
+                fontSize: Responsive.getSubtitleFontSize(context),
+                fontWeight: FontWeight.bold,
+                color: primaryColor, // Use primaryColor for title
+              ),
+            ),
+            const Spacer(),
+            Tooltip(
+              message: 'Shows sales patterns throughout the day',
+              child: Icon(Icons.info_outline, size: 16, color: Colors.grey.shade500),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        
+        Expanded(
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -893,83 +1059,66 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                 color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
               ),
             ),
-            child: BarChart(
-              BarChartData(
-                alignment: BarChartAlignment.spaceAround,
-                maxY: maxSales * 1.1, // Add 10% padding
-                minY: 0,
-                barTouchData: BarTouchData(
-                  enabled: true,
-                  touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (group) => isDarkMode ? Colors.grey.shade800 : Colors.white,
-                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                      final sales = rod.toY;
-                      final data = displayedData[group.x.toInt()];
-                      final label = data['formattedDate'] as String;
-                      return BarTooltipItem(
-                        '$label\n₱${sales.toStringAsFixed(2)}',
-                        TextStyle(
-                          color: primaryColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                titlesData: FlTitlesData(
-                  show: true,
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: getLeftTitles,
-                      reservedSize: 40,
-                      interval: maxSales / 4,
-                    ),
-                  ),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      getTitlesWidget: getBottomTitles,
-                      reservedSize: 30,
-                    ),
-                  ),
-                ),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: maxSales / 4,
-                  getDrawingHorizontalLine: (value) {
-                    return FlLine(
-                      color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                      strokeWidth: 0.5,
-                    );
-                  },
-                ),
-                borderData: FlBorderData(
-                  show: false,
-                ),
-                barGroups: barGroups,
-              ),
-            ),
+            child: _buildLineChart(primaryColor, isDarkMode, textColor),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildPieChart(Color primaryColor, bool isDarkMode, Color textColor, BuildContext context) {
+  Widget _buildCategoryDistributionChart(Color primaryColor, bool isDarkMode, Color textColor, BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.access_time, color: primaryColor, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              'CATEGORY DISTRIBUTION',
+              style: TextStyle(
+                fontSize: Responsive.getSubtitleFontSize(context),
+                fontWeight: FontWeight.bold,
+                color: primaryColor, // Use primaryColor for title
+              ),
+            ),
+            const Spacer(),
+            Tooltip(
+              message: 'Shows sales distribution across categories',
+              child: Icon(Icons.info_outline, size: 16, color: Colors.grey.shade500),
+            ),
+          ],
+        ),
+        
+        const SizedBox(height: 12),
+        
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey.shade900.withOpacity(0.5) : Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+              ),
+            ),
+            child: _buildPieChart(primaryColor, isDarkMode, textColor),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPieChart(Color primaryColor, bool isDarkMode, Color textColor) {
     if (_categorySalesData.isEmpty) {
-      return _buildEmptyChart('CATEGORY DISTRIBUTION', 'No category sales data', Icons.pie_chart, primaryColor, isDarkMode, textColor);
+      return _buildEmptyChart('No category sales data', Icons.pie_chart, primaryColor, isDarkMode, textColor);
     }
     
     // Check if we have any sales data
     final hasSalesData = _categorySalesData.any((cat) => (cat['sales'] as double) > 0);
     
     if (!hasSalesData) {
-      return _buildEmptyChart('CATEGORY DISTRIBUTION', 'No sales recorded for categories', Icons.pie_chart, primaryColor, isDarkMode, textColor);
+      return _buildEmptyChart('No sales recorded for categories', Icons.pie_chart, primaryColor, isDarkMode, textColor);
     }
     
     // Prepare pie chart sections
@@ -989,7 +1138,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
             value: sales,
             title: percentage >= 3 ? '${percentage.toStringAsFixed(0)}%' : '',
             radius: 50,
-            titleStyle: TextStyle(
+            titleStyle: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -1019,27 +1168,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(Icons.pie_chart, color: primaryColor, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              'CATEGORY DISTRIBUTION',
-              style: TextStyle(
-                fontSize: Responsive.getSubtitleFontSize(context),
-                fontWeight: FontWeight.bold,
-                color: textColor,
-              ),
-            ),
-            const Spacer(),
-            Tooltip(
-              message: 'Shows revenue distribution across product categories',
-              child: Icon(Icons.info_outline, size: 16, color: Colors.grey.shade500),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        
         Expanded(
           child: Container(
             padding: const EdgeInsets.all(12),
@@ -1211,75 +1339,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     return colors[index];
   }
 
-  Widget _buildPeakHoursLineGraph(
-    Color primaryColor,
-    bool isMobile,
-    bool isDarkMode,
-    Color cardColor,
-    Color textColor,
-    Color mutedTextColor,
-    BuildContext context,
-  ) {
-    return Container(
-      constraints: BoxConstraints(minHeight: isMobile ? 300 : 350),
-      child: Card(
-        elevation: isDarkMode ? 2 : 3,
-        color: cardColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-            width: 1,
-          ),
-        ),
-        child: Padding(
-          padding: Responsive.getCardPadding(context),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.timeline, color: primaryColor, size: 24),
-                  const SizedBox(width: 8),
-                  Text(
-                    'HOURLY SALES PERFORMANCE',
-                    style: TextStyle(
-                      fontSize: Responsive.getTitleFontSize(context),
-                      fontWeight: FontWeight.bold,
-                      color: primaryColor,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Track sales patterns throughout the day',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: mutedTextColor,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              Container(
-                height: isMobile ? 250 : 300,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDarkMode ? Colors.grey.shade900.withOpacity(0.5) : Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                  ),
-                ),
-                child: _buildLineChart(primaryColor, isDarkMode, textColor),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildLineChart(Color primaryColor, bool isDarkMode, Color textColor) {
     if (_hourlyData.isEmpty) {
       return Center(
@@ -1315,12 +1374,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
       final sales = data['sales'] as double;
       return FlSpot(index.toDouble(), sales);
     }).toList();
-    
-    // Find peak hours
-    final peakHours = _hourlyData
-        .where((h) => (h['sales'] as double) > maxSales * 0.7)
-        .map((h) => h['label'] as String)
-        .toList();
     
     // Side titles for X-axis
     Widget getBottomTitles(double value, TitleMeta meta) {
@@ -1382,7 +1435,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                     ),
                   );
                 }
-                return LineTooltipItem('', const TextStyle());
+                return const LineTooltipItem('', TextStyle());
               }).toList();
             },
           ),
@@ -1452,10 +1505,10 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     );
   }
 
-  Widget _buildMobileCharts(Color primaryColor, bool isMobile, bool isDarkMode, Color cardColor, Color textColor, BuildContext context) {
+  Widget _buildMobileCombinedCharts(Color primaryColor, bool isMobile, bool isDarkMode, Color cardColor, Color textColor, BuildContext context) {
     return Column(
       children: [
-        // Bar Chart for Mobile
+        // Hourly Sales Performance for Mobile
         Container(
           constraints: BoxConstraints(minHeight: isMobile ? 350 : 400),
           child: Card(
@@ -1476,14 +1529,14 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.analytics, color: primaryColor, size: isMobile ? 18 : 20),
+                      Icon(Icons.access_time, color: primaryColor, size: isMobile ? 18 : 20),
                       const SizedBox(width: 8),
                       Text(
-                        'SALES TREND',
+                        'HOURLY SALES PERFORMANCE',
                         style: TextStyle(
                           fontSize: isMobile ? 14 : Responsive.getTitleFontSize(context),
                           fontWeight: FontWeight.bold,
-                          color: textColor,
+                          color: primaryColor, // Use primaryColor for title
                         ),
                       ),
                     ],
@@ -1491,7 +1544,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   const SizedBox(height: 12),
                   SizedBox(
                     height: isMobile ? 250 : 300,
-                    child: _buildBarChart(primaryColor, isDarkMode, textColor, context),
+                    child: _buildLineChart(primaryColor, isDarkMode, textColor),
                   ),
                 ],
               ),
@@ -1528,7 +1581,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                         style: TextStyle(
                           fontSize: isMobile ? 14 : Responsive.getTitleFontSize(context),
                           fontWeight: FontWeight.bold,
-                          color: textColor,
+                          color: primaryColor,
                         ),
                       ),
                     ],
@@ -1536,7 +1589,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   const SizedBox(height: 12),
                   SizedBox(
                     height: isMobile ? 300 : 350,
-                    child: _buildPieChart(primaryColor, isDarkMode, textColor, context),
+                    child: _buildPieChart(primaryColor, isDarkMode, textColor),
                   ),
                 ],
               ),
@@ -1547,22 +1600,14 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     );
   }
 
-  Widget _buildEmptyChart(String title, String message, IconData icon, Color primaryColor, bool isDarkMode, Color textColor) {
+  Widget _buildEmptyChart(String message, IconData icon, Color primaryColor, bool isDarkMode, Color textColor) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center, // Changed to center
       children: [
-        Row(
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.center, // Center the row
           children: [
-            Icon(icon, color: primaryColor, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: textColor,
-              ),
-            ),
+            SizedBox(width: 8),
           ],
         ),
         const SizedBox(height: 12),
@@ -1616,9 +1661,9 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
             const SizedBox(height: 16),
             _buildSkeletonFilters(context, isMobile, isDarkMode, cardColor),
             const SizedBox(height: 16),
-            _buildSkeletonCharts(context, isMobile, isDarkMode, cardColor),
+            _buildSkeletonSalesTrendChart(context, isMobile, isDarkMode, cardColor),
             const SizedBox(height: 16),
-            _buildSkeletonPeakHoursGraph(context, isMobile, isDarkMode, cardColor),
+            _buildSkeletonCombinedCharts(context, isMobile, isDarkMode, cardColor),
             const SizedBox(height: 16),
             _buildSkeletonTaxBreakdown(context, isMobile, false, false, isDarkMode, cardColor),
             const SizedBox(height: 16),
@@ -1630,48 +1675,34 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
   }
 
   Widget _buildSkeletonStatsGrid(BuildContext context, bool isMobile, bool isDarkMode, Color cardColor) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 150),
-      child: Card(
-        elevation: isDarkMode ? 2 : 3,
-        color: cardColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Title skeleton
+        Container(
+          width: 200,
+          height: 20,
+          decoration: BoxDecoration(
             color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-            width: 1,
+            borderRadius: BorderRadius.circular(4),
           ),
+          margin: const EdgeInsets.only(bottom: 16),
         ),
-        child: Padding(
-          padding: Responsive.getCardPadding(context),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 200,
-                height: 20,
-                decoration: BoxDecoration(
-                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                margin: const EdgeInsets.only(bottom: 16),
-              ),
-              Responsive.buildResponsiveCardGrid(
-                context: context,
-                title: '',
-                titleColor: Colors.transparent,
-                centerTitle: true,
-                cards: [
-                  _buildSkeletonStatCard(isDarkMode, context),
-                  _buildSkeletonStatCard(isDarkMode, context),
-                  _buildSkeletonStatCard(isDarkMode, context),
-                  _buildSkeletonStatCard(isDarkMode, context),
-                ],
-              ),
-            ],
-          ),
+        
+        // Stats grid - Use Responsive.buildResponsiveCardGrid directly without wrapping Card
+        Responsive.buildResponsiveCardGrid(
+          context: context,
+          title: '',
+          titleColor: Colors.transparent,
+          centerTitle: true,
+          cards: [
+            _buildSkeletonStatCard(isDarkMode, context),
+            _buildSkeletonStatCard(isDarkMode, context),
+            _buildSkeletonStatCard(isDarkMode, context),
+            _buildSkeletonStatCard(isDarkMode, context),
+          ],
         ),
-      ),
+      ],
     );
   }
 
@@ -1795,7 +1826,57 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     );
   }
 
-  Widget _buildSkeletonCharts(BuildContext context, bool isMobile, bool isDarkMode, Color cardColor) {
+  Widget _buildSkeletonSalesTrendChart(BuildContext context, bool isMobile, bool isDarkMode, Color cardColor) {
+    return Container(
+      constraints: BoxConstraints(minHeight: isMobile ? 350 : 400),
+      child: Card(
+        elevation: isDarkMode ? 2 : 3,
+        color: cardColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 150,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: 200,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                height: isMobile ? 250 : 300,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonCombinedCharts(BuildContext context, bool isMobile, bool isDarkMode, Color cardColor) {
     if (isMobile) {
       return Column(
         children: [
@@ -1817,7 +1898,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 150,
+                      width: 200,
                       height: 20,
                       decoration: BoxDecoration(
                         color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
@@ -1961,167 +2042,101 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
     }
   }
 
-  Widget _buildSkeletonPeakHoursGraph(BuildContext context, bool isMobile, bool isDarkMode, Color cardColor) {
-    return Container(
-      constraints: BoxConstraints(minHeight: isMobile ? 300 : 350),
-      child: Card(
-        elevation: isDarkMode ? 2 : 3,
-        color: cardColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-            width: 1,
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 200,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: 150,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                height: isMobile ? 250 : 300,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                ),
-              ),
-            ],
-          ),
+  Widget _buildSkeletonTaxBreakdown(BuildContext context, bool isMobile, bool isTablet, bool isDesktop, bool isDarkMode, Color cardColor) {
+    return Card(
+      elevation: isDarkMode ? 2 : 3,
+      color: cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+          width: 1,
         ),
       ),
-    );
-  }
-
-  Widget _buildSkeletonTaxBreakdown(BuildContext context, bool isMobile, bool isTablet, bool isDesktop, bool isDarkMode, Color cardColor) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 200),
-      child: Card(
-        elevation: isDarkMode ? 2 : 3,
-        color: cardColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-            width: 1,
-          ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.all(isDesktop ? 16 : 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      child: Padding(
+        padding: EdgeInsets.all(isDesktop ? 16 : 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 150,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            if (isMobile)
+              Column(
                 children: [
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 150,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              
-              if (isMobile)
-                Column(
-                  children: [
-                    for (int i = 0; i < 4; i++) ...[
-                      Container(
-                        height: 80,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                        ),
-                      ),
-                      if (i < 3) Container(
-                        height: 1,
-                        margin: const EdgeInsets.only(bottom: 12),
+                  for (int i = 0; i < 4; i++) ...[
+                    Container(
+                      height: 80,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
                         color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
                       ),
-                    ],
+                    ),
+                    if (i < 3) Container(
+                      height: 1,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                    ),
                   ],
-                )
-              else if (isTablet)
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 1.8,
-                  children: [
-                    for (int i = 0; i < 4; i++)
-                      Container(
+                ],
+              )
+            else if (isTablet)
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.8,
+                children: [
+                  for (int i = 0; i < 4; i++)
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                      ),
+                    ),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  for (int i = 0; i < 4; i++) ...[
+                    Expanded(
+                      child: Container(
+                        height: 120,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8),
                           color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
                         ),
                       ),
+                    ),
+                    if (i < 3) const SizedBox(width: 12),
                   ],
-                )
-              else
-                Row(
-                  children: [
-                    for (int i = 0; i < 4; i++) ...[
-                      Expanded(
-                        child: Container(
-                          height: 120,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                          ),
-                        ),
-                      ),
-                      if (i < 3) const SizedBox(width: 12),
-                    ],
-                  ],
-                ),
-            ],
-          ),
+                ],
+              ),
+          ],
         ),
       ),
     );
@@ -2228,7 +2243,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                 Column(
                   children: [
                     DropdownButtonFormField<String>(
-                      value: _selectedView,
+                      initialValue: _selectedView,
                       onChanged: (value) => _onViewChanged(value!),
                       dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                       style: TextStyle(color: textColor),
@@ -2261,7 +2276,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                     
                     if (!_isLoadingCategories)
                       DropdownButtonFormField<String>(
-                        value: _selectedCategory,
+                        initialValue: _selectedCategory,
                         onChanged: (value) => _onCategoryChanged(value!),
                         dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                         style: TextStyle(color: textColor),
@@ -2301,7 +2316,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _selectedView,
+                        initialValue: _selectedView,
                         onChanged: (value) => _onViewChanged(value!),
                         dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                         style: TextStyle(color: textColor),
@@ -2336,7 +2351,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                     if (!_isLoadingCategories)
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _selectedCategory,
+                          initialValue: _selectedCategory,
                           onChanged: (value) => _onCategoryChanged(value!),
                           dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                           style: TextStyle(color: textColor),
@@ -2462,7 +2477,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Formula: Net Sales × $_taxRate% = Tax Amount',
+                        'Formula: Total Sales = Net Sales + Tax ($_taxRate% included)', // Updated formula
                         style: TextStyle(
                           fontSize: isDesktop ? 13 : 12,
                           color: textColor,
@@ -2548,7 +2563,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   _buildDesktopTaxCard(
                     'Net Sales',
                     _netSales,
-                    'Before tax',
+                    'Before tax deduction',
                     primaryColor,
                     Icons.money_off,
                     isDarkMode,
@@ -2573,7 +2588,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   _buildDesktopTaxCard(
                     'Tax Amount',
                     _totalTax,
-                    'Calculated tax',
+                    'Tax included',
                     primaryColor,
                     Icons.request_quote,
                     isDarkMode,
@@ -2585,7 +2600,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   _buildDesktopTaxCard(
                     'Total Revenue',
                     _totalRevenue,
-                    'Net + Tax',
+                    'Net - Tax',
                     primaryColor,
                     Icons.attach_money,
                     isDarkMode,
@@ -2679,7 +2694,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Net Sales:',
+                      'Net Revenue:',
                       style: TextStyle(
                         fontSize: isDesktop ? 14 : 13,
                         color: mutedTextColor,
@@ -2687,7 +2702,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                       ),
                     ),
                     Text(
-                      '${(100 - (_totalTax / _totalRevenue * 100)).toStringAsFixed(1)}%',
+                      '${((_totalRevenue / _netSales) * 100).toStringAsFixed(1)}%',
                       style: TextStyle(
                         fontSize: isDesktop ? 14 : 13,
                         color: primaryColor,
@@ -2703,10 +2718,10 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                       ),
                     ),
                     Text(
-                      '${(_totalTax / _totalRevenue * 100).toStringAsFixed(1)}%',
+                      '${(_totalTax / _netSales * 100).toStringAsFixed(1)}%',
                       style: TextStyle(
                         fontSize: isDesktop ? 14 : 13,
-                        color: primaryColor,
+                        color: Colors.red,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -2790,7 +2805,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
                   textColor: textColor,
                   mutedTextColor: mutedTextColor,
                 ),
-              ).toList(),
+              ),
             ],
           ),
         ),
@@ -2834,7 +2849,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
           });
         }
       } catch (e) {
-        print('Error calculating weekly trend: $e');
       }
     }
     
@@ -2847,7 +2861,6 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
           'description': 'Schedule more staff during peak hours',
         });
       } catch (e) {
-        print('Error finding peak hour: $e');
       }
     }
     
@@ -2917,6 +2930,9 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
 
   Widget _buildStatCard(String title, String value, IconData icon, Color color, BuildContext context, 
       {String? subtitle, bool isDarkMode = false}) {
+    // Replace NaN values with "0.00"
+    final displayValue = value.contains('NaN') ? '0.00' : value;
+    
     return Container(
       padding: EdgeInsets.all(Responsive.getFontSize(context, mobile: 12, tablet: 14, desktop: 16) * 0.8),
       decoration: BoxDecoration(
@@ -2956,7 +2972,7 @@ class _SalesMonitoringState extends State<SalesMonitoring> with SettingsMixin {
           ),
           const SizedBox(height: 4),
           Text(
-            value,
+            displayValue, // Use sanitized value
             style: TextStyle(
               fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18) * 0.9,
               fontWeight: FontWeight.bold,

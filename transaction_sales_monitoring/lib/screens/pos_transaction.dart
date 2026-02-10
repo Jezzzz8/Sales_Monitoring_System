@@ -1,4 +1,4 @@
-// pos_transaction.dart - UPDATED with complete fixes
+// pos_transaction.dart - UPDATED with correct Partial Payment Logic
 import 'package:flutter/material.dart';
 import '../utils/settings_mixin.dart';
 import '../models/product.dart';
@@ -8,6 +8,8 @@ import '../services/settings_service.dart';
 import '../models/settings_model.dart';
 import '../services/product_service.dart';
 import '../services/transaction_service.dart';
+import '../widgets/loading_overlay.dart';
+import '../widgets/top_loading_indicator.dart';
 
 class POSTransaction extends StatefulWidget {
   const POSTransaction({super.key});
@@ -26,6 +28,8 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   List<Product> _products = [];
   bool _isLoadingProducts = true;
   bool _isInitialLoad = true;
+  bool _isProcessingTransaction = false;
+  bool _showTopLoading = false;
 
   final List<TransactionItem> _cartItems = [];
   final TextEditingController _customerNameController = TextEditingController();
@@ -33,8 +37,10 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   final TextEditingController _notesController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
   String _paymentMethod = 'Cash';
-  double _amountPaid = 0;
+  double _cashReceived = 0;
   bool _showCustomerForm = true;
+  String _paymentType = 'Full Payment'; // 'Full Payment' or 'Partial Payment'
+  double _downPaymentAmount = 0;
 
   @override
   void initState() {
@@ -64,24 +70,41 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   }
 
   Future<void> _loadProducts() async {
-    setState(() => _isLoadingProducts = true);
+    setState(() {
+      _isLoadingProducts = true;
+      _showTopLoading = true;
+    });
+    
     try {
-      // CHANGED: Get ALL products instead of just featured
       _productsStream = ProductService.getProducts();
+      
       // Listen to the stream and update local list
       _productsStream?.listen((products) {
         if (mounted) {
           setState(() {
-            // Only include active products, but include out-of-stock ones
             _products = products.where((p) => p.isActive).toList();
             _isLoadingProducts = false;
+            _showTopLoading = false;
           });
         }
+      }, onError: (error) {
+        print('Error in products stream: $error');
+        setState(() {
+          _isLoadingProducts = false;
+          _showTopLoading = false;
+        });
       });
     } catch (e) {
       print('Error loading products: $e');
-      setState(() => _isLoadingProducts = false);
+      setState(() {
+        _isLoadingProducts = false;
+        _showTopLoading = false;
+      });
     }
+  }
+
+  bool get _isLoadingData {
+    return _isLoadingSettings || _isLoadingProducts || _isInitialLoad;
   }
 
   Color _getPrimaryColor() {
@@ -97,14 +120,64 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   }
 
   double get _change {
-    return _amountPaid - _total;
+    if (_paymentType == 'Partial Payment') {
+      return _cashReceived - _downPaymentAmount;
+    }
+    return _cashReceived - _total;
+  }
+
+  double get _balance {
+    if (_paymentType == 'Partial Payment') {
+      return _total - _downPaymentAmount;
+    }
+    return 0;
+  }
+
+  bool get _isAmountSufficient {
+    if (_paymentType == 'Partial Payment') {
+      return _cashReceived >= _downPaymentAmount;
+    }
+    return _cashReceived >= _total;
   }
 
   int get _totalItemCount {
     return _cartItems.fold(0, (sum, item) => sum + item.quantity);
   }
 
+  // UPDATED: Helper method to add bill amount to appropriate field
+  void _addBillAmount(int bill) {
+    if (_paymentType == 'Partial Payment') {
+      // In partial payment mode, add to down payment amount
+      setState(() {
+        _downPaymentAmount += bill.toDouble();
+        // Cash received should match the down payment amount
+        _cashReceived = _downPaymentAmount;
+      });
+    } else {
+      // In full payment mode, add to cash received
+      setState(() {
+        _cashReceived += bill.toDouble();
+      });
+    }
+  }
+
   void _addToCart(Product product) {
+    // Check stock limit
+    final existingItemIndex = _cartItems.indexWhere((item) => item.productId == product.id);
+    int currentQuantityInCart = existingItemIndex != -1 ? _cartItems[existingItemIndex].quantity : 0;
+    
+    // Check if adding one more would exceed stock
+    if (currentQuantityInCart + 1 > product.stock) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Cannot add more ${product.name}. Only ${product.stock - currentQuantityInCart} available in stock.'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     // This check is still needed in case someone bypasses the disabled state
     if (product.stock <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -231,7 +304,9 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                 _customerPhoneController.clear();
                 _notesController.clear();
                 _paymentMethod = 'Cash';
-                _amountPaid = 0;
+                _cashReceived = 0;
+                _downPaymentAmount = 0;
+                _paymentType = 'Full Payment';
                 _showCustomerForm = true;
               });
               
@@ -257,6 +332,9 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
   }
 
   Future<void> _processTransaction() async {
+    // PREVENT MULTIPLE TAPS
+    if (_isProcessingTransaction) return;
+    
     if (_cartItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -282,10 +360,10 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       return;
     }
 
-    if (_amountPaid < _total) {
+    if (_paymentType == 'Partial Payment' && _downPaymentAmount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Amount paid (₱${_amountPaid.toStringAsFixed(2)}) is less than total (₱${_total.toStringAsFixed(2)})'),
+        const SnackBar(
+          content: Text('Please enter down payment amount'),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
         ),
@@ -293,10 +371,64 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
       return;
     }
 
+    if (!_isAmountSufficient) {
+      String message = '';
+      if (_paymentType == 'Partial Payment') {
+        message = 'Amount received (₱${_cashReceived.toStringAsFixed(2)}) is less than down payment (₱${_downPaymentAmount.toStringAsFixed(2)})';
+      } else {
+        message = 'Amount received (₱${_cashReceived.toStringAsFixed(2)}) is less than total (₱${_total.toStringAsFixed(2)})';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // Check stock availability for all items in cart
+    for (final item in _cartItems) {
+      final product = _products.firstWhere((p) => p.id == item.productId, orElse: () => Product(
+        id: '',
+        category: '',
+        name: '',
+        description: '',
+        price: 0,
+        cost: 0,
+        unit: '',
+        stock: 0,
+        reorderLevel: 0,
+        isActive: true,
+        createdAt: DateTime.now(),
+        categoryId: '',
+      ));
+      
+      if (item.quantity > product.stock) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cannot process order. Only ${product.stock} ${product.name} available in stock.'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+    }
+
+    // SHOW LOADING OVERLAY
+    LoadingOverlay.show(context, message: 'Processing transaction...');
     setState(() {
+      _isProcessingTransaction = true;
     });
 
     try {
+      // UPDATED: For Partial Payment, amountPaid = downPaymentAmount, cashReceived = amountPaid
+      // For Full Payment, amountPaid = total, cashReceived = cashReceived
+      final double amountPaid = _paymentType == 'Partial Payment' ? _downPaymentAmount : _total;
+      final double cashReceived = _paymentType == 'Partial Payment' ? _downPaymentAmount : _cashReceived;
+      
       final transaction = TransactionModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         transactionNumber: TransactionService.generateTransactionNumber(),
@@ -309,11 +441,12 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
             : '-',
         paymentMethod: _paymentMethod,
         totalAmount: _total,
-        amountPaid: _amountPaid,
+        amountPaid: amountPaid,
+        cashReceived: cashReceived,
         change: _change,
-        status: 'Completed',
+        status: _paymentType == 'Partial Payment' ? 'Partial' : 'Completed',
         items: List.from(_cartItems),
-        notes: _notesController.text,
+        notes: '${_paymentType == 'Partial Payment' ? 'Partial Payment - Down Payment: ₱$_downPaymentAmount, Balance: ₱$_balance\n' : ''}${_notesController.text}',
         createdAt: DateTime.now(),
         cashier: 'Staff',
         reference: '-',
@@ -321,6 +454,12 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
 
       // Save to Firebase
       final result = await TransactionService.addTransaction(transaction);
+      
+      // HIDE LOADING OVERLAY
+      LoadingOverlay.hide();
+      setState(() {
+        _isProcessingTransaction = false;
+      });
       
       if (result['success'] == true) {
         final savedTransaction = result['transaction'] as TransactionModel;
@@ -335,6 +474,12 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
         );
       }
     } catch (e) {
+      // HIDE LOADING OVERLAY ON ERROR
+      LoadingOverlay.hide();
+      setState(() {
+        _isProcessingTransaction = false;
+      });
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error processing transaction: $e'),
@@ -342,22 +487,24 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
           duration: const Duration(seconds: 3),
         ),
       );
-    } finally {
-      setState(() {
-      });
     }
   }
 
   void _showReceiptDialog(TransactionModel transaction) {
+    final bool isPartial = transaction.status == 'Partial';
+    
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            const Icon(Icons.receipt, color: Colors.deepOrange),
+            Icon(
+              isPartial ? Icons.payments : Icons.receipt,
+              color: isPartial ? Colors.orange : Colors.deepOrange,
+            ),
             const SizedBox(width: 8),
-            const Text('Transaction Receipt'),
+            Text(isPartial ? 'Partial Payment Receipt' : 'Transaction Receipt'),
             const Spacer(),
             IconButton(
               icon: const Icon(Icons.print),
@@ -368,7 +515,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                     backgroundColor: Colors.blue,
                   ),
                 );
-              },
+            },
             ),
           ],
         ),
@@ -424,12 +571,21 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                 ),
               )),
               const Divider(),
-              _buildReceiptRow('Total', _total, isBold: true),
-              const Divider(),
-              _buildReceiptRow('Amount Paid', _amountPaid),
-              _buildReceiptRow('Change', _change, color: _change >= 0 ? Colors.green : Colors.red, isBold: true),
+              _buildReceiptRow('Total Due', transaction.totalAmount, isBold: true),
+              if (isPartial) ...[
+                const Divider(),
+                _buildReceiptRow('Down Payment', transaction.amountPaid),
+                _buildReceiptRow('Cash Received', transaction.cashReceived),
+                _buildReceiptRow('Balance', transaction.totalAmount - transaction.amountPaid, color: Colors.orange, isBold: true),
+                _buildReceiptRow('Change', transaction.change, color: transaction.change >= 0 ? Colors.green : Colors.red),
+              ] else ...[
+                const Divider(),
+                _buildReceiptRow('Cash Received', transaction.cashReceived),
+                _buildReceiptRow('Change', transaction.change, color: transaction.change >= 0 ? Colors.green : Colors.red, isBold: true),
+              ],
               const SizedBox(height: 16),
               Text('Payment Method: ${transaction.paymentMethod}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('Payment Type: ${isPartial ? "Partial Payment" : "Full Payment"}', style: const TextStyle(fontWeight: FontWeight.bold)),
               if (transaction.notes != null && transaction.notes!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -439,16 +595,16 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: isPartial ? Colors.orange.shade50 : Colors.green.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.shade100),
+                  border: Border.all(color: isPartial ? Colors.orange.shade100 : Colors.green.shade100),
                 ),
-                child: const Center(
+                child: Center(
                   child: Text(
-                    '✅ TRANSACTION COMPLETED',
+                    isPartial ? '⏳ PARTIAL PAYMENT RECEIVED' : '✅ TRANSACTION COMPLETED',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Colors.green,
+                      color: isPartial ? Colors.orange : Colors.green,
                     ),
                   ),
                 ),
@@ -477,17 +633,20 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
               _clearCart();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Transaction completed! Receipt #${transaction.transactionNumber}'),
-                  backgroundColor: Colors.green,
+                  content: Text('${isPartial ? "Partial Payment" : "Transaction"} completed! Receipt #${transaction.transactionNumber}'),
+                  backgroundColor: isPartial ? Colors.orange : Colors.green,
                   behavior: SnackBarBehavior.floating,
                   duration: const Duration(seconds: 3),
                 ),
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: _getPrimaryColor(),
+              backgroundColor: isPartial ? Colors.orange : _getPrimaryColor(),
             ),
-            child: const Text('COMPLETE SALE', style: TextStyle(color: Colors.white)),
+            child: Text(
+              isPartial ? 'CONTINUE' : 'COMPLETE SALE', 
+              style: const TextStyle(color: Colors.white)
+            ),
           ),
         ],
       ),
@@ -569,6 +728,13 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
     // Check if product is out of stock
     final bool isOutOfStock = product.stock <= 0;
     
+    // Check current quantity in cart
+    final currentQuantityInCart = _cartItems.fold(0, (sum, item) {
+      return item.productId == product.id ? sum + item.quantity : sum;
+    });
+    
+    final bool canAddMore = currentQuantityInCart < product.stock;
+    
     return SizedBox(
       height: isMobile ? 160 : (isTablet ? 180 : 150),
       child: Card(
@@ -578,8 +744,8 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
         ),
         color: isDarkMode ? Colors.grey.shade800 : Colors.white,
         child: InkWell(
-          onTap: isOutOfStock 
-              ? null // Disable tap for out of stock products
+          onTap: isOutOfStock || !canAddMore
+              ? null // Disable tap for out of stock or limit reached
               : () => _addToCart(product),
           borderRadius: BorderRadius.circular(12),
           child: Container(
@@ -587,14 +753,14 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
             decoration: BoxDecoration(
               color: isDarkMode 
                   ? Colors.grey.shade800 
-                  : (isOutOfStock 
+                  : (isOutOfStock || !canAddMore
                       ? Colors.grey.shade200.withOpacity(0.5)
                       : primaryColor.withOpacity(0.05)),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: isDarkMode 
                     ? Colors.grey.shade700 
-                    : (isOutOfStock 
+                    : (isOutOfStock || !canAddMore
                         ? Colors.grey.shade400.withOpacity(0.5)
                         : primaryColor.withOpacity(0.1)),
                 width: 1,
@@ -616,7 +782,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                                 Colors.grey.shade700,
                                 Colors.grey.shade800,
                               ]
-                            : (isOutOfStock
+                            : (isOutOfStock || !canAddMore
                                 ? [
                                     Colors.grey.shade300.withOpacity(0.5),
                                     Colors.grey.shade400.withOpacity(0.3),
@@ -657,7 +823,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                                     _getProductIcon(product.category),
                                     color: isDarkMode 
                                         ? primaryColor.withOpacity(0.8)
-                                        : (isOutOfStock
+                                        : (isOutOfStock || !canAddMore
                                             ? Colors.grey.shade500
                                             : primaryColor),
                                     size: iconSize,
@@ -672,15 +838,15 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                               _getProductIcon(product.category),
                               color: isDarkMode 
                                   ? primaryColor.withOpacity(0.8)
-                                  : (isOutOfStock
+                                  : (isOutOfStock || !canAddMore
                                       ? Colors.grey.shade500
                                       : primaryColor),
                               size: iconSize,
                             ),
                           ),
                         
-                        // Out of Stock Label
-                        if (isOutOfStock)
+                        // Out of Stock or Limit Reached Label
+                        if (isOutOfStock || !canAddMore)
                           Positioned.fill(
                             child: Container(
                               decoration: BoxDecoration(
@@ -693,12 +859,12 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(
-                                      color: Colors.red,
+                                      color: isOutOfStock ? Colors.red : Colors.orange,
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: const Text(
-                                      'OUT OF STOCK',
-                                      style: TextStyle(
+                                    child: Text(
+                                      isOutOfStock ? 'OUT OF STOCK' : 'LIMIT REACHED',
+                                      style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 10,
                                         fontWeight: FontWeight.bold,
@@ -723,7 +889,29 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                '${product.stock}',
+                                '${product.stock - currentQuantityInCart}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        
+                        // Current quantity in cart indicator
+                        if (currentQuantityInCart > 0 && !isOutOfStock)
+                          Positioned(
+                            top: 4,
+                            left: 4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '$currentQuantityInCart in cart',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 9,
@@ -746,7 +934,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                     fontSize: titleFontSize,
                     color: isDarkMode 
                         ? Colors.white 
-                        : (isOutOfStock
+                        : (isOutOfStock || !canAddMore
                             ? Colors.grey.shade600
                             : Colors.black87),
                   ),
@@ -763,7 +951,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                     fontWeight: FontWeight.bold,
                     color: isDarkMode 
                         ? primaryColor.withOpacity(0.8)
-                        : (isOutOfStock
+                        : (isOutOfStock || !canAddMore
                             ? Colors.grey.shade500
                             : primaryColor),
                   ),
@@ -782,7 +970,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                             size: 10,
                             color: isDarkMode 
                                 ? Colors.grey.shade400
-                                : (isOutOfStock
+                                : (isOutOfStock || !canAddMore
                                     ? Colors.grey.shade400
                                     : Colors.grey),
                           ),
@@ -794,7 +982,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                                 fontSize: 9,
                                 color: isDarkMode 
                                     ? Colors.grey.shade400
-                                    : (isOutOfStock
+                                    : (isOutOfStock || !canAddMore
                                         ? Colors.grey.shade400
                                         : Colors.grey),
                               ),
@@ -815,10 +1003,10 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                           ),
                           const SizedBox(width: 2),
                           Text(
-                            '${product.stock}',
+                            '${product.stock - currentQuantityInCart}',
                             style: TextStyle(
                               fontSize: 9,
-                              color: product.stock < 5 ? Colors.red : Colors.green,
+                              color: product.stock - currentQuantityInCart <= 0 ? Colors.red : Colors.green,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -1058,10 +1246,6 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingSettings) {
-      return _buildSkeletonScreen(context);
-    }
-    
     final primaryColor = getPrimaryColor();
     final isMobile = Responsive.isMobile(context);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -1071,33 +1255,45 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
     final textColor = isDarkMode ? Colors.white : Colors.black87;
     final hintTextColor = isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600;
     
-    return Theme(
-      data: Theme.of(context).copyWith(
-        scaffoldBackgroundColor: backgroundColor,
-        cardColor: cardColor,
-        primaryColor: primaryColor,
-        textTheme: Theme.of(context).textTheme.copyWith(
-              bodyLarge: TextStyle(color: textColor),
-              bodyMedium: TextStyle(color: textColor),
+    return Stack(
+      children: [
+        Theme(
+          data: Theme.of(context).copyWith(
+            scaffoldBackgroundColor: backgroundColor,
+            cardColor: cardColor,
+            primaryColor: primaryColor,
+            textTheme: Theme.of(context).textTheme.copyWith(
+                  bodyLarge: TextStyle(color: textColor),
+                  bodyMedium: TextStyle(color: textColor),
+                ),
+            colorScheme: isDarkMode
+                ? const ColorScheme.dark(
+                    primary: Colors.deepOrange,
+                    surface: Colors.grey,
+                  )
+                : ColorScheme.fromSwatch(
+                    primarySwatch: Colors.orange,
+                    backgroundColor: backgroundColor,
+                  ),
+          ),
+          child: Scaffold(
+            backgroundColor: backgroundColor,
+            body: Column(
+              children: [
+                if (_showTopLoading) const TopLoadingIndicator(),
+                
+                Expanded(
+                  child: _isInitialLoad || _isLoadingProducts
+                      ? _buildSkeletonScreen(context)
+                      : (isMobile 
+                          ? _buildMobileLayout(primaryColor, isDarkMode, backgroundColor, cardColor, textColor, hintTextColor) 
+                          : _buildDesktopLayout(primaryColor, isDarkMode, backgroundColor, cardColor, textColor, hintTextColor)),
+                ),
+              ],
             ),
-        colorScheme: isDarkMode
-            ? const ColorScheme.dark(
-                primary: Colors.deepOrange,
-                surface: Colors.grey,
-              )
-            : ColorScheme.fromSwatch(
-                primarySwatch: Colors.orange,
-                backgroundColor: backgroundColor,
-              ),
-      ),
-      child: Scaffold(
-        backgroundColor: backgroundColor,
-        body: _isInitialLoad || _isLoadingProducts
-            ? _buildSkeletonScreen(context)
-            : (isMobile 
-                ? _buildMobileLayout(primaryColor, isDarkMode, backgroundColor, cardColor, textColor, hintTextColor) 
-                : _buildDesktopLayout(primaryColor, isDarkMode, backgroundColor, cardColor, textColor, hintTextColor)),
-      ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1306,7 +1502,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                               decoration: BoxDecoration(
                                 color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
                                 borderRadius: BorderRadius.circular(4),
-                              ),
+                            ),
                             ),
                             const SizedBox(height: 8),
                             Container(
@@ -1427,7 +1623,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
             ),
           ),
           
-          // Search bar
+          // Search bar (removed refresh button)
           Padding(
             padding: const EdgeInsets.all(12),
             child: Container(
@@ -1512,10 +1708,21 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _processTransaction,
-        backgroundColor: Colors.green,
-        icon: const Icon(Icons.check_circle, color: Colors.white),
-        label: const Text('PROCESS SALE', style: TextStyle(color: Colors.white)),
+        onPressed: _isProcessingTransaction ? null : _processTransaction, // DISABLE WHEN PROCESSING
+        backgroundColor: _isProcessingTransaction ? Colors.grey : Colors.green, // GRAY WHEN PROCESSING
+        icon: _isProcessingTransaction 
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : const Icon(Icons.check_circle, color: Colors.white),
+        label: _isProcessingTransaction 
+            ? const Text('PROCESSING...', style: TextStyle(color: Colors.white))
+            : const Text('PROCESS SALE', style: TextStyle(color: Colors.white)),
         elevation: 4,
       ),
     );
@@ -1543,7 +1750,7 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
               color: backgroundColor,
               child: Column(
                 children: [
-                  // Search bar
+                  // Search bar (removed refresh button)
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Container(
@@ -1913,6 +2120,59 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                                         ),
                                       ),
                                     ),
+                                    const SizedBox(height: 16),
+                                    
+                                    // Payment Type Selection
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                        children: ['Full Payment', 'Partial Payment'].map((type) {
+                                          final isSelected = _paymentType == type;
+                                          return GestureDetector(
+                                            onTap: () {
+                                              setState(() {
+                                                _paymentType = type;
+                                                if (type == 'Full Payment') {
+                                                  _downPaymentAmount = 0;
+                                                  _cashReceived = 0;
+                                                } else {
+                                                  _downPaymentAmount = 0;
+                                                  _cashReceived = 0;
+                                                }
+                                              });
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: isSelected 
+                                                  ? (type == 'Partial Payment' ? Colors.orange : Colors.green)
+                                                  : Colors.transparent,
+                                                borderRadius: BorderRadius.circular(20),
+                                                border: Border.all(
+                                                  color: isSelected 
+                                                    ? (type == 'Partial Payment' ? Colors.orange : Colors.green)
+                                                    : (isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300),
+                                                ),
+                                              ),
+                                              child: Text(
+                                                type,
+                                                style: TextStyle(
+                                                  color: isSelected 
+                                                    ? Colors.white 
+                                                    : textColor,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ),
                                   ],
                                 ),
                             ],
@@ -1931,49 +2191,201 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                           ),
                           child: Column(
                             children: [
-                              _buildTotalRow('Total', _total, isDarkMode: isDarkMode, isBold: true, fontSize: 18),
-                              const SizedBox(height: 16),
-                              TextField(
-                                onChanged: (value) {
-                                  setState(() {
-                                    _amountPaid = double.tryParse(value) ?? 0;
-                                  });
-                                },
-                                style: TextStyle(color: textColor),
-                                decoration: InputDecoration(
-                                  labelText: 'Amount Paid *',
-                                  labelStyle: TextStyle(color: hintTextColor),
-                                  border: OutlineInputBorder(
-                                    borderSide: BorderSide(
-                                      color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                    ),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderSide: BorderSide(
-                                      color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                    ),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderSide: BorderSide(
-                                      color: primaryColor,
-                                    ),
-                                  ),
-                                  prefixText: '₱',
-                                  prefixStyle: TextStyle(color: textColor),
-                                  prefixIcon: Icon(Icons.money, 
-                                    color: isDarkMode ? primaryColor.withOpacity(0.8) : primaryColor
-                                  ),
-                                ),
-                                keyboardType: TextInputType.number,
-                              ),
+                              _buildTotalRow('Total Due', _total, isDarkMode: isDarkMode, isBold: true, fontSize: 18),
                               const SizedBox(height: 8),
-                              if (_amountPaid > 0)
-                                _buildTotalRow(
-                                  'Change',
-                                  _change,
-                                  isDarkMode: isDarkMode,
-                                  color: _change >= 0 ? Colors.green : Colors.red,
-                                  isBold: true,
+                              
+                              // Partial Payment Fields
+                              if (_paymentType == 'Partial Payment')
+                                Column(
+                                  children: [
+                                    TextField(
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _downPaymentAmount = double.tryParse(value) ?? 0;
+                                          // For partial payments, cash received should match down payment amount
+                                          _cashReceived = _downPaymentAmount;
+                                        });
+                                      },
+                                      style: TextStyle(color: textColor),
+                                      decoration: InputDecoration(
+                                        labelText: 'Down Payment Amount *',
+                                        labelStyle: TextStyle(color: hintTextColor),
+                                        border: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                          ),
+                                        ),
+                                        focusedBorder: const OutlineInputBorder(
+                                          borderSide: BorderSide(color: Colors.orange),
+                                        ),
+                                        prefixText: '₱',
+                                        prefixStyle: TextStyle(color: textColor),
+                                        prefixIcon: const Icon(Icons.payments, color: Colors.orange),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                      controller: TextEditingController(
+                                        text: _downPaymentAmount > 0 ? _downPaymentAmount.toStringAsFixed(2) : '',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    
+                                    // Bill Buttons for Down Payment (only in partial mode)
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Quick amounts for down payment:',
+                                          style: TextStyle(
+                                            color: hintTextColor,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children: [50, 100, 200, 500, 1000].map((bill) {
+                                            return ElevatedButton(
+                                              onPressed: () => _addBillAmount(bill),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: isDarkMode ? Colors.grey.shade700 : Colors.orange.shade100,
+                                                foregroundColor: Colors.orange,
+                                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                              ),
+                                              child: Text('+₱$bill'),
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _buildTotalRow('Down Payment', _downPaymentAmount, isDarkMode: isDarkMode, color: Colors.orange),
+                                    _buildTotalRow('Balance', _balance, isDarkMode: isDarkMode, color: Colors.orange, isBold: true),
+                                    
+                                    // Cash Received Display (read-only in partial payment mode)
+                                    const SizedBox(height: 16),
+                                      TextField(
+                                        readOnly: true,
+                                        style: TextStyle(color: textColor),
+                                        decoration: InputDecoration(
+                                          labelText: 'Cash Received (matches down payment)',
+                                          labelStyle: TextStyle(color: hintTextColor),
+                                          border: OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                            ),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                            ),
+                                          ),
+                                          focusedBorder: const OutlineInputBorder(
+                                            borderSide: BorderSide(color: Colors.orange),
+                                          ),
+                                          prefixText: '₱',
+                                          prefixStyle: TextStyle(color: textColor),
+                                          prefixIcon: const Icon(Icons.money, color: Colors.blue), // Changed to blue
+                                          filled: true,
+                                          fillColor: isDarkMode ? Colors.grey.shade800.withOpacity(0.5) : Colors.blue.shade50, // Blue background
+                                        ),
+                                        controller: TextEditingController(
+                                          text: _cashReceived > 0 ? _cashReceived.toStringAsFixed(2) : '',
+                                        ),
+                                      ),
+                                    const SizedBox(height: 8),
+                                    _buildTotalRow('Change', _change, isDarkMode: isDarkMode, color: _change >= 0 ? Colors.green : Colors.red, isBold: true),
+                                    const SizedBox(height: 16),
+                                  ],
+                                ),
+                              
+                              // Full Payment Cash Received Input
+                              if (_paymentType == 'Full Payment')
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Cash Received',
+                                      style: TextStyle(
+                                        color: hintTextColor,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    // Bill Buttons for Full Payment
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [50, 100, 200, 500, 1000].map((bill) {
+                                        return ElevatedButton(
+                                          onPressed: () => _addBillAmount(bill),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: isDarkMode ? Colors.grey.shade700 : Colors.green.shade100,
+                                            foregroundColor: Colors.green,
+                                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          child: Text('+₱$bill'),
+                                        );
+                                      }).toList(),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextField(
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _cashReceived = double.tryParse(value) ?? 0;
+                                        });
+                                      },
+                                      style: TextStyle(color: textColor),
+                                      decoration: InputDecoration(
+                                        labelText: 'Cash Received *',
+                                        labelStyle: TextStyle(color: hintTextColor),
+                                        border: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                          ),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(
+                                            color: primaryColor,
+                                          ),
+                                        ),
+                                        prefixText: '₱',
+                                        prefixStyle: TextStyle(color: textColor),
+                                        prefixIcon: Icon(Icons.money, 
+                                          color: isDarkMode ? primaryColor.withOpacity(0.8) : primaryColor
+                                        ),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                      controller: TextEditingController(
+                                        text: _cashReceived > 0 ? _cashReceived.toStringAsFixed(2) : '',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    if (_cashReceived > 0)
+                                      _buildTotalRow(
+                                        'Change',
+                                        _change,
+                                        isDarkMode: isDarkMode,
+                                        color: _change >= 0 ? Colors.green : Colors.red,
+                                        isBold: true,
+                                      ),
+                                  ],
                                 ),
                             ],
                           ),
@@ -2012,11 +2424,31 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _processTransaction,
-                    icon: const Icon(Icons.check_circle, size: 20, color: Colors.white),
-                    label: const Text('PROCESS SALE', style: TextStyle(color: Colors.white)),
+                    onPressed: _isProcessingTransaction ? null : _processTransaction, // DISABLE WHEN PROCESSING
+                    icon: _isProcessingTransaction
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Icon(
+                            _paymentType == 'Partial Payment' ? Icons.payments : Icons.check_circle,
+                            size: 20,
+                            color: Colors.white
+                          ),
+                    label: _isProcessingTransaction
+                        ? const Text('PROCESSING...', style: TextStyle(color: Colors.white))
+                        : Text(
+                            _paymentType == 'Partial Payment' ? 'PROCESS DOWN PAYMENT' : 'PROCESS SALE',
+                            style: const TextStyle(color: Colors.white)
+                          ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
+                      backgroundColor: _isProcessingTransaction 
+                          ? Colors.grey 
+                          : (_paymentType == 'Partial Payment' ? Colors.orange : Colors.green),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -2227,10 +2659,64 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                                       ValueListenableBuilder<double>(
                                         valueListenable: ValueNotifier<double>(_total),
                                         builder: (context, total, child) {
-                                          return _buildTotalRowForModal('Total', total, isDarkMode: isDarkMode, isBold: true, fontSize: 18);
+                                          return _buildTotalRowForModal('Total Due', total, isDarkMode: isDarkMode, isBold: true, fontSize: 18);
                                         },
                                       ),
                                       const SizedBox(height: 16),
+                                      
+                                      // Payment Type Selection
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                          children: ['Full Payment', 'Partial Payment'].map((type) {
+                                            final isSelected = _paymentType == type;
+                                            return GestureDetector(
+                                              onTap: () {
+                                                setModalState(() {
+                                                  _paymentType = type;
+                                                  if (type == 'Full Payment') {
+                                                    _downPaymentAmount = 0;
+                                                    _cashReceived = 0;
+                                                  } else {
+                                                    _downPaymentAmount = 0;
+                                                    _cashReceived = 0;
+                                                  }
+                                                });
+                                              },
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                decoration: BoxDecoration(
+                                                  color: isSelected 
+                                                    ? (type == 'Partial Payment' ? Colors.orange : Colors.green)
+                                                    : Colors.transparent,
+                                                  borderRadius: BorderRadius.circular(20),
+                                                  border: Border.all(
+                                                    color: isSelected 
+                                                      ? (type == 'Partial Payment' ? Colors.orange : Colors.green)
+                                                      : (isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  type,
+                                                  style: TextStyle(
+                                                    color: isSelected 
+                                                      ? Colors.white 
+                                                      : textColor,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      
                                       TextField(
                                         controller: _customerNameController,
                                         style: TextStyle(color: textColor),
@@ -2333,57 +2819,214 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                                         },
                                       ),
                                       const SizedBox(height: 8),
-                                      TextField(
-                                        onChanged: (value) {
-                                          setModalState(() {
-                                            _amountPaid = double.tryParse(value) ?? 0;
-                                          });
-                                        },
-                                        style: TextStyle(color: textColor),
-                                        decoration: InputDecoration(
-                                          labelText: 'Amount Paid *',
-                                          labelStyle: TextStyle(color: hintTextColor),
-                                          border: OutlineInputBorder(
-                                            borderSide: BorderSide(
-                                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                      
+                                      // Partial Payment Amount
+                                      if (_paymentType == 'Partial Payment')
+                                        Column(
+                                          children: [
+                                            TextField(
+                                              onChanged: (value) {
+                                                setModalState(() {
+                                                  _downPaymentAmount = double.tryParse(value) ?? 0;
+                                                  // For partial payments, cash received should match down payment amount
+                                                  _cashReceived = _downPaymentAmount;
+                                                });
+                                              },
+                                              style: TextStyle(color: textColor),
+                                              decoration: InputDecoration(
+                                                labelText: 'Down Payment Amount *',
+                                                labelStyle: TextStyle(color: hintTextColor),
+                                                border: OutlineInputBorder(
+                                                  borderSide: BorderSide(
+                                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                  ),
+                                                ),
+                                                enabledBorder: OutlineInputBorder(
+                                                  borderSide: BorderSide(
+                                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                  ),
+                                                ),
+                                                focusedBorder: const OutlineInputBorder(
+                                                  borderSide: BorderSide(color: Colors.orange),
+                                                ),
+                                                prefixText: '₱',
+                                                prefixStyle: TextStyle(color: textColor),
+                                                prefixIcon: const Icon(Icons.payments, color: Colors.orange),
+                                              ),
+                                              keyboardType: TextInputType.number,
+                                              controller: TextEditingController(
+                                                text: _downPaymentAmount > 0 ? _downPaymentAmount.toStringAsFixed(2) : '',
+                                              ),
                                             ),
-                                          ),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderSide: BorderSide(
-                                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                            
+                                            // Bill Buttons for Down Payment
+                                            const SizedBox(height: 8),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Quick amounts for down payment:',
+                                                  style: TextStyle(
+                                                    color: hintTextColor,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Wrap(
+                                                  spacing: 8,
+                                                  runSpacing: 8,
+                                                  children: [50, 100, 200, 500, 1000].map((bill) {
+                                                    return ElevatedButton(
+                                                      onPressed: () {
+                                                        setModalState(() {
+                                                          _downPaymentAmount += bill.toDouble();
+                                                          _cashReceived = _downPaymentAmount;
+                                                        });
+                                                      },
+                                                      style: ElevatedButton.styleFrom(
+                                                        backgroundColor: isDarkMode ? Colors.grey.shade700 : Colors.orange.shade100,
+                                                        foregroundColor: Colors.orange,
+                                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                        shape: RoundedRectangleBorder(
+                                                          borderRadius: BorderRadius.circular(8),
+                                                        ),
+                                                      ),
+                                                      child: Text('+₱$bill'),
+                                                    );
+                                                  }).toList(),
+                                                ),
+                                              ],
                                             ),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderSide: BorderSide(
-                                              color: primaryColor,
+                                            const SizedBox(height: 8),
+                                            _buildTotalRowForModal('Down Payment', _downPaymentAmount, isDarkMode: isDarkMode, color: Colors.orange),
+                                            _buildTotalRowForModal('Balance', _balance, isDarkMode: isDarkMode, color: Colors.orange, isBold: true),
+                                            
+                                            // Cash Received Display (read-only)
+                                            const SizedBox(height: 8),
+                                            TextField(
+                                              readOnly: true,
+                                              style: TextStyle(color: textColor),
+                                              decoration: InputDecoration(
+                                                labelText: 'Cash Received (matches down payment)',
+                                                labelStyle: TextStyle(color: hintTextColor),
+                                                border: OutlineInputBorder(
+                                                  borderSide: BorderSide(
+                                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                  ),
+                                                ),
+                                                enabledBorder: OutlineInputBorder(
+                                                  borderSide: BorderSide(
+                                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                  ),
+                                                ),
+                                                focusedBorder: const OutlineInputBorder(
+                                                  borderSide: BorderSide(color: Colors.orange),
+                                                ),
+                                                prefixText: '₱',
+                                                prefixStyle: TextStyle(color: textColor),
+                                                prefixIcon: const Icon(Icons.money, color: Colors.orange),
+                                                filled: true,
+                                                fillColor: isDarkMode ? Colors.grey.shade800.withOpacity(0.5) : Colors.grey.shade200,
+                                              ),
+                                              controller: TextEditingController(
+                                                text: _cashReceived > 0 ? _cashReceived.toStringAsFixed(2) : '',
+                                              ),
                                             ),
-                                          ),
-                                          prefixText: '₱',
-                                          prefixStyle: TextStyle(color: textColor),
-                                          prefixIcon: Icon(Icons.money, 
-                                            color: isDarkMode ? primaryColor.withOpacity(0.8) : primaryColor
-                                          ),
+                                            const SizedBox(height: 8),
+                                            _buildTotalRowForModal('Change', _change, isDarkMode: isDarkMode, color: _change >= 0 ? Colors.green : Colors.red, isBold: true),
+                                            const SizedBox(height: 8),
+                                          ],
                                         ),
-                                        keyboardType: TextInputType.number,
-                                        controller: TextEditingController(
-                                          text: _amountPaid > 0 ? _amountPaid.toStringAsFixed(2) : '',
-                                        ),
-                                      ),
-                                      if (_amountPaid > 0)
-                                        Padding(
-                                          padding: const EdgeInsets.only(top: 8),
-                                          child: ValueListenableBuilder<double>(
-                                            valueListenable: ValueNotifier<double>(_change),
-                                            builder: (context, change, child) {
-                                              return _buildTotalRowForModal(
-                                                'Change',
-                                                change,
-                                                isDarkMode: isDarkMode,
-                                                color: change >= 0 ? Colors.green : Colors.red,
-                                                isBold: true,
-                                              );
-                                            },
-                                          ),
+                                      
+                                      // Full Payment Cash Received Input
+                                      if (_paymentType == 'Full Payment')
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Cash Received',
+                                              style: TextStyle(
+                                                color: hintTextColor,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              children: [50, 100, 200, 500, 1000].map((bill) {
+                                                return ElevatedButton(
+                                                  onPressed: () {
+                                                    setModalState(() {
+                                                      _cashReceived += bill.toDouble();
+                                                    });
+                                                  },
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: isDarkMode ? Colors.grey.shade700 : Colors.green.shade100,
+                                                    foregroundColor: Colors.green,
+                                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                    ),
+                                                  ),
+                                                  child: Text('+₱$bill'),
+                                                );
+                                              }).toList(),
+                                            ),
+                                            const SizedBox(height: 12),
+                                            TextField(
+                                              onChanged: (value) {
+                                                setModalState(() {
+                                                  _cashReceived = double.tryParse(value) ?? 0;
+                                                });
+                                              },
+                                              style: TextStyle(color: textColor),
+                                              decoration: InputDecoration(
+                                                labelText: 'Cash Received *',
+                                                labelStyle: TextStyle(color: hintTextColor),
+                                                border: OutlineInputBorder(
+                                                  borderSide: BorderSide(
+                                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                  ),
+                                                ),
+                                                enabledBorder: OutlineInputBorder(
+                                                  borderSide: BorderSide(
+                                                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                                  ),
+                                                ),
+                                                focusedBorder: OutlineInputBorder(
+                                                  borderSide: BorderSide(
+                                                    color: primaryColor,
+                                                  ),
+                                                ),
+                                                prefixText: '₱',
+                                                prefixStyle: TextStyle(color: textColor),
+                                                prefixIcon: Icon(Icons.money, 
+                                                  color: isDarkMode ? primaryColor.withOpacity(0.8) : primaryColor
+                                                ),
+                                              ),
+                                              keyboardType: TextInputType.number,
+                                              controller: TextEditingController(
+                                                text: _cashReceived > 0 ? _cashReceived.toStringAsFixed(2) : '',
+                                              ),
+                                            ),
+                                            if (_cashReceived > 0)
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 8),
+                                                child: ValueListenableBuilder<double>(
+                                                  valueListenable: ValueNotifier<double>(_change),
+                                                  builder: (context, change, child) {
+                                                    return _buildTotalRowForModal(
+                                                      'Change',
+                                                      change,
+                                                      isDarkMode: isDarkMode,
+                                                      color: change >= 0 ? Colors.green : Colors.red,
+                                                      isBold: true,
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                          ],
                                         ),
                                     ],
                                   ),
@@ -2432,11 +3075,31 @@ class _POSTransactionState extends State<POSTransaction> with SettingsMixin {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
-                            onPressed: _processTransaction,
-                            icon: const Icon(Icons.check_circle, color: Colors.white),
-                            label: const Text('PROCESS SALE', style: TextStyle(color: Colors.white)),
+                            onPressed: _isProcessingTransaction ? null : _processTransaction, // DISABLE WHEN PROCESSING
+                            icon: _isProcessingTransaction
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  )
+                                : Icon(
+                                    _paymentType == 'Partial Payment' ? Icons.payments : Icons.check_circle,
+                                    size: 20,
+                                    color: Colors.white
+                                  ),
+                            label: _isProcessingTransaction
+                                ? const Text('PROCESSING...', style: TextStyle(color: Colors.white))
+                                : Text(
+                                    _paymentType == 'Partial Payment' ? 'PROCESS DOWN PAYMENT' : 'PROCESS SALE',
+                                    style: const TextStyle(color: Colors.white)
+                                  ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
+                              backgroundColor: _isProcessingTransaction 
+                                  ? Colors.grey 
+                                  : (_paymentType == 'Partial Payment' ? Colors.orange : Colors.green),
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),

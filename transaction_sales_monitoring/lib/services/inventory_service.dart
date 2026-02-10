@@ -1,18 +1,25 @@
-// lib/services/inventory_service.dart
+// lib/services/inventory_service.dart - UPDATED with product integration
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../firebase/firebase_config.dart';
 import '../models/category_model.dart';
 import '../models/inventory.dart';
+import '../models/product.dart';
 import 'category_service.dart';
 
 class InventoryService {
   static CollectionReference get inventoryCollection => 
       FirebaseConfig.firestore.collection('inventory');
+  
+  static CollectionReference get inventoryLogsCollection => 
+      FirebaseConfig.firestore.collection('inventory_logs');
+  
+  static CollectionReference get productsCollection => 
+      FirebaseConfig.firestore.collection('products');
 
   // Get all inventory items
-    static Stream<List<InventoryItem>> getInventoryItems() {
+  static Stream<List<InventoryItem>> getInventoryItems() {
     return inventoryCollection
-        .orderBy('createdAt', descending: true)  // Remove isActive filter
+        .orderBy('createdAt', descending: true)
         .snapshots()
         .asyncMap((snapshot) async {
       // Filter in memory
@@ -43,23 +50,23 @@ class InventoryService {
   // Get inventory items by category
   static Stream<List<InventoryItem>> getInventoryByCategory(String categoryId) {
     return inventoryCollection
-        .where('categoryId', isEqualTo: categoryId)  // Single where clause
+        .where('categoryId', isEqualTo: categoryId)
         .orderBy('name')
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => InventoryItem.fromFirestore(doc))
-            .where((item) => item.isActive)  // Filter in memory
+            .where((item) => item.isActive)
             .toList());
   }
 
   // Get low stock items
   static Stream<List<InventoryItem>> getLowStockItems() {
     return inventoryCollection
-        .orderBy('name')  // Remove isActive filter
+        .orderBy('name')
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => InventoryItem.fromFirestore(doc))
-            .where((item) => item.isActive && item.needsReorder)  // Filter in memory
+            .where((item) => item.isActive && item.needsReorder)
             .toList());
   }
 
@@ -67,6 +74,16 @@ class InventoryService {
   static Future<void> createInventoryItem(InventoryItem item) async {
     try {
       await inventoryCollection.doc(item.id).set(item.toFirestore());
+      
+      // Log the inventory creation
+      await _logInventoryAction(
+        itemId: item.id,
+        itemName: item.name,
+        action: 'Stock In (Create)',
+        changeAmount: item.currentStock,
+        remainingStock: item.currentStock,
+        notes: 'Initial stock',
+      );
     } catch (e) {
       print('Error creating inventory item: $e');
       rethrow;
@@ -76,6 +93,12 @@ class InventoryService {
   // Update inventory item
   static Future<void> updateInventoryItem(InventoryItem item) async {
     try {
+      // Get current stock before update
+      final currentDoc = await inventoryCollection.doc(item.id).get();
+      final currentData = currentDoc.data() as Map<String, dynamic>;
+      final oldStock = (currentData['currentStock'] ?? 0).toDouble();
+      final stockChange = item.currentStock - oldStock;
+      
       await inventoryCollection.doc(item.id).update({
         'name': item.name,
         'categoryId': item.categoryId,
@@ -92,10 +115,21 @@ class InventoryService {
         'status': item.status,
         'color': item.color,
         'description': item.description ?? '',
-        // FIX: Changed from isActive to active
         'active': item.isActive,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      
+      // Log the inventory update if stock changed
+      if (stockChange != 0) {
+        await _logInventoryAction(
+          itemId: item.id,
+          itemName: item.name,
+          action: 'Stock In (Edit)',
+          changeAmount: stockChange,
+          remainingStock: item.currentStock,
+          notes: 'Manual adjustment',
+        );
+      }
     } catch (e) {
       print('Error updating inventory item: $e');
       rethrow;
@@ -103,7 +137,7 @@ class InventoryService {
   }
 
   // Restock inventory
-    static Future<void> restockItem(String itemId, double quantity, {double? newUnitCost}) async {
+  static Future<void> restockItem(String itemId, double quantity, {double? newUnitCost, String? notes}) async {
     try {
       final doc = await inventoryCollection.doc(itemId).get();
       if (!doc.exists) throw Exception('Item not found');
@@ -123,14 +157,86 @@ class InventoryService {
         'lastRestocked': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      
+      // Log the restock
+      await _logInventoryAction(
+        itemId: itemId,
+        itemName: data['name'] ?? 'Unknown',
+        action: 'Restock',
+        changeAmount: quantity,
+        remainingStock: newStock,
+        notes: notes ?? 'Regular restock',
+      );
     } catch (e) {
       print('Error restocking item: $e');
       rethrow;
     }
   }
 
-  // Consume inventory (for production/sales)
-  static Future<void> consumeItem(String itemId, double quantity) async {
+  // Consume inventory for production/sales
+  static Future<void> consumeInventoryForProduct(Product product, int quantity) async {
+    try {
+      if (product.ingredients == null || product.ingredients!.isEmpty) {
+        throw Exception('Product has no ingredients defined');
+      }
+      
+      final batch = FirebaseConfig.firestore.batch();
+      final consumptionLogs = <Map<String, dynamic>>[];
+      
+      for (final ingredient in product.ingredients!) {
+        final itemId = ingredient.inventoryId;
+        final requiredQuantity = ingredient.quantity * quantity;
+        
+        final doc = await inventoryCollection.doc(itemId).get();
+        if (!doc.exists) {
+          throw Exception('Inventory item ${ingredient.inventoryName} not found');
+        }
+
+        final data = doc.data() as Map<String, dynamic>;
+        final currentStock = (data['currentStock'] ?? 0).toDouble();
+        final minimumStock = (data['minimumStock'] ?? 0).toDouble();
+        final newStock = currentStock - requiredQuantity;
+        
+        if (newStock < 0) {
+          throw Exception('Insufficient stock for ${ingredient.inventoryName}. Required: $requiredQuantity, Available: $currentStock');
+        }
+        
+        final status = _calculateStatus(newStock, minimumStock);
+        final itemRef = inventoryCollection.doc(itemId);
+        
+        batch.update(itemRef, {
+          'currentStock': newStock,
+          'status': status,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        
+        consumptionLogs.add({
+          'itemId': itemId,
+          'itemName': ingredient.inventoryName,
+          'changeAmount': -requiredQuantity,
+          'remainingStock': newStock,
+        });
+      }
+
+      await batch.commit();
+      
+      // Log the consumption
+      await _logInventoryConsumption(
+        productId: product.id,
+        productName: product.name,
+        quantity: quantity,
+        itemsConsumed: consumptionLogs,
+        notes: 'Production for ${product.name} x$quantity',
+      );
+      
+    } catch (e) {
+      print('Error consuming inventory for product: $e');
+      rethrow;
+    }
+  }
+
+  // Consume inventory (for production/sales) - generic version
+  static Future<void> consumeItem(String itemId, double quantity, {String? reason}) async {
     try {
       final doc = await inventoryCollection.doc(itemId).get();
       if (!doc.exists) throw Exception('Item not found');
@@ -140,13 +246,27 @@ class InventoryService {
       final minimumStock = (data['minimumStock'] ?? 0).toDouble();
       final newStock = currentStock - quantity;
       
+      if (newStock < 0) {
+        throw Exception('Insufficient stock. Available: $currentStock, Required: $quantity');
+      }
+      
       final status = _calculateStatus(newStock, minimumStock);
 
       await inventoryCollection.doc(itemId).update({
-        'currentStock': newStock >= 0 ? newStock : 0,
+        'currentStock': newStock,
         'status': status,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      
+      // Log the consumption
+      await _logInventoryAction(
+        itemId: itemId,
+        itemName: data['name'] ?? 'Unknown',
+        action: 'Consumption',
+        changeAmount: -quantity,
+        remainingStock: newStock,
+        notes: reason ?? 'Manual consumption',
+      );
     } catch (e) {
       print('Error consuming item: $e');
       rethrow;
@@ -157,7 +277,6 @@ class InventoryService {
   static Future<void> deleteInventoryItem(String itemId) async {
     try {
       await inventoryCollection.doc(itemId).update({
-        // FIX: Changed from isActive to active
         'active': false,
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -170,7 +289,6 @@ class InventoryService {
   static Future<void> toggleInventoryItemStatus(String itemId, bool isActive) async {
     try {
       await inventoryCollection.doc(itemId).update({
-        // FIX: Changed from isActive to active
         'active': !isActive,
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -181,13 +299,12 @@ class InventoryService {
   }
 
   // Get inventory statistics
-    static Future<Map<String, dynamic>> getStatistics() async {
+  static Future<Map<String, dynamic>> getStatistics() async {
     try {
       final snapshot = await inventoryCollection
-          .orderBy('name')  // Remove isActive filter
+          .orderBy('name')
           .get();
       
-      // Filter in memory
       final items = snapshot.docs
           .map((doc) => InventoryItem.fromFirestore(doc))
           .where((item) => item.isActive)
@@ -250,15 +367,37 @@ class InventoryService {
   // Search inventory items
   static Stream<List<InventoryItem>> searchInventoryItems(String query) {
     return inventoryCollection
-        .orderBy('name')  // Remove isActive filter
+        .orderBy('name')
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => InventoryItem.fromFirestore(doc))
             .where((item) =>
-                item.isActive &&  // Filter in memory
+                item.isActive &&
                 (item.name.toLowerCase().contains(query.toLowerCase()) ||
                  item.categoryName.toLowerCase().contains(query.toLowerCase()) ||
                  (item.description ?? '').toLowerCase().contains(query.toLowerCase())))
+            .toList());
+  }
+
+  // Get inventory logs for an item
+  static Stream<List<InventoryLog>> getInventoryLogs(String itemId) {
+    return inventoryLogsCollection
+        .where('itemId', isEqualTo: itemId)
+        .orderBy('timestamp', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => InventoryLog.fromFirestore(doc))
+            .toList());
+  }
+
+  // Get recent inventory logs
+  static Stream<List<InventoryLog>> getRecentInventoryLogs({int limit = 50}) {
+    return inventoryLogsCollection
+        .orderBy('timestamp', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => InventoryLog.fromFirestore(doc))
             .toList());
   }
 
@@ -268,6 +407,57 @@ class InventoryService {
     if (currentStock <= minimumStock * 1.2) return 'Low Stock';
     if (currentStock <= minimumStock) return 'Critical';
     return 'In Stock';
+  }
+
+  // Private method to log inventory actions
+  static Future<void> _logInventoryAction({
+    required String itemId,
+    required String itemName,
+    required String action,
+    required double changeAmount,
+    required double remainingStock,
+    String? notes,
+    String user = 'System',
+  }) async {
+    try {
+      await inventoryLogsCollection.add({
+        'itemId': itemId,
+        'itemName': itemName,
+        'action': action,
+        'changeAmount': changeAmount,
+        'remainingStock': remainingStock,
+        'user': user,
+        'notes': notes ?? '',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error logging inventory action: $e');
+    }
+  }
+
+  // Private method to log inventory consumption for products
+  static Future<void> _logInventoryConsumption({
+    required String productId,
+    required String productName,
+    required int quantity,
+    required List<Map<String, dynamic>> itemsConsumed,
+    String? notes,
+    String user = 'System',
+  }) async {
+    try {
+      await inventoryLogsCollection.add({
+        'productId': productId,
+        'productName': productName,
+        'action': 'Product Production',
+        'quantity': quantity,
+        'itemsConsumed': itemsConsumed,
+        'user': user,
+        'notes': notes ?? '',
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error logging inventory consumption: $e');
+    }
   }
 
   // Initialize default inventory items
@@ -389,5 +579,74 @@ class InventoryService {
     } catch (e) {
       print('Error initializing default inventory: $e');
     }
+  }
+}
+
+// Inventory Log Model
+class InventoryLog {
+  final String id;
+  final String itemId;
+  final String itemName;
+  final String action;
+  final double changeAmount;
+  final double remainingStock;
+  final String user;
+  final String notes;
+  final DateTime timestamp;
+  final String? productId;
+  final String? productName;
+  final int? quantity;
+  final List<Map<String, dynamic>>? itemsConsumed;
+
+  InventoryLog({
+    required this.id,
+    required this.itemId,
+    required this.itemName,
+    required this.action,
+    required this.changeAmount,
+    required this.remainingStock,
+    required this.user,
+    required this.notes,
+    required this.timestamp,
+    this.productId,
+    this.productName,
+    this.quantity,
+    this.itemsConsumed,
+  });
+
+  factory InventoryLog.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    
+    return InventoryLog(
+      id: doc.id,
+      itemId: data['itemId'] ?? '',
+      itemName: data['itemName'] ?? '',
+      action: data['action'] ?? '',
+      changeAmount: (data['changeAmount'] ?? 0).toDouble(),
+      remainingStock: (data['remainingStock'] ?? 0).toDouble(),
+      user: data['user'] ?? 'System',
+      notes: data['notes'] ?? '',
+      productId: data['productId'],
+      productName: data['productName'],
+      quantity: data['quantity']?.toInt(),
+      itemsConsumed: data['itemsConsumed'] != null 
+          ? List<Map<String, dynamic>>.from(data['itemsConsumed'] as List)
+          : null,
+      timestamp: (data['timestamp'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'itemId': itemId,
+      'itemName': itemName,
+      'action': action,
+      'changeAmount': changeAmount,
+      'remainingStock': remainingStock,
+      'user': user,
+      'notes': notes,
+      'timestamp': timestamp.toIso8601String(),
+    };
   }
 }

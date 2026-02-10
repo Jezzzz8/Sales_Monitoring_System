@@ -1,5 +1,7 @@
 // lib/screens/inventory_monitoring.dart - FIXED VERSION
 import 'package:flutter/material.dart';
+import '../models/product.dart';
+import '../services/product_service.dart';
 import '../utils/responsive.dart';
 import '../models/inventory.dart';
 import '../models/category_model.dart';
@@ -212,6 +214,133 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
               _buildDetailRow('Last Restocked', _formatDate(item.lastRestocked)),
               if (item.nextRestockDate != null)
                 _buildDetailRow('Next Restock', _formatDate(item.nextRestockDate!)),
+              
+              // Used in Products Section
+              const SizedBox(height: 12),
+              StreamBuilder<List<Product>>(
+                stream: ProductService.getProducts(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  
+                  final allProducts = snapshot.data ?? [];
+                  final productsUsingThisItem = allProducts.where((product) {
+                    return product.ingredients?.any((ingredient) => 
+                        ingredient.inventoryId == item.id) ?? false;
+                  }).toList();
+                  
+                  if (productsUsingThisItem.isEmpty) {
+                    return Container();
+                  }
+                  
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'USED IN PRODUCTS',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...productsUsingThisItem.map((product) {
+                        // Find the ingredient that uses this inventory item
+                        ProductIngredient? ingredient;
+                        if (product.ingredients != null) {
+                          for (final ing in product.ingredients!) {
+                            if (ing.inventoryId == item.id) {
+                              ingredient = ing;
+                              break;
+                            }
+                          }
+                        }
+                        
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          elevation: 1,
+                          child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  product.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Quantity per product:',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${ingredient?.quantity ?? 0} ${item.unit}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Product Stock:',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${product.stock} ${product.unit}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: product.needsReorder ? Colors.red : Colors.green,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (ingredient != null)
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Reserved for Production:',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${(ingredient.quantity * product.stock).toStringAsFixed(2)} ${item.unit}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -320,11 +449,19 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                     );
                   }
                   
-                  // Set default category if not set
+                  // Set default category if not set and categories exist
                   if (selectedCategoryId.isEmpty && categories.isNotEmpty) {
-                    selectedCategoryId = categories.first.id;
-                    selectedCategoryName = categories.first.name;
-                    selectedColor = categories.first.color;
+                    // Use Future.microtask to avoid setState during build
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        // This ensures the dropdown value is set after the widget is built
+                        setState(() {
+                          selectedCategoryId = categories.first.id;
+                          selectedCategoryName = categories.first.name;
+                          selectedColor = categories.first.color;
+                        });
+                      }
+                    });
                   }
                   
                   return Column(
@@ -341,45 +478,62 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                       ),
                       const SizedBox(height: 12),
 
-                      // Category Dropdown
-                      DropdownButtonFormField<String>(
-                        value: selectedCategoryId.isNotEmpty ? selectedCategoryId : null,
-                        decoration: const InputDecoration(
-                          labelText: 'Category *',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.category),
-                        ),
-                        items: categories
-                            .map<DropdownMenuItem<String>>((category) => DropdownMenuItem<String>(
-                                  value: category.id,
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 16,
-                                        height: 16,
-                                        decoration: BoxDecoration(
-                                          color: _parseColor(category.color),
-                                          borderRadius: BorderRadius.circular(4),
+                      // Category Dropdown - ADD NULL SAFETY CHECK
+                      if (categories.isNotEmpty && selectedCategoryId.isNotEmpty)
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedCategoryId,
+                          decoration: const InputDecoration(
+                            labelText: 'Category *',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.category),
+                          ),
+                          items: categories
+                              .map<DropdownMenuItem<String>>((category) => DropdownMenuItem<String>(
+                                    value: category.id,
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 16,
+                                          height: 16,
+                                          decoration: BoxDecoration(
+                                            color: _parseColor(category.color),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(category.name),
-                                    ],
-                                  ),
-                                ))
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            final category = categories
-                                .firstWhere((cat) => cat.id == value);
-                            setState(() {
-                              selectedCategoryId = value;
-                              selectedCategoryName = category.name;
-                              selectedColor = category.color;
-                            });
-                          }
-                        },
-                      ),
+                                        const SizedBox(width: 8),
+                                        Text(category.name),
+                                      ],
+                                    ),
+                                  ))
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              final category = categories
+                                  .firstWhere((cat) => cat.id == value);
+                              setState(() {
+                                selectedCategoryId = value;
+                                selectedCategoryName = category.name;
+                                selectedColor = category.color;
+                              });
+                            }
+                          },
+                        )
+                      else if (categories.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red.shade200),
+                          ),
+                          child: const Text(
+                            'No categories available. Please create categories first.',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        )
+                      else
+                        const CircularProgressIndicator(),
+                        
                       const SizedBox(height: 12),
 
                       TextFormField(
@@ -693,11 +847,37 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                   final categories = snapshot.data ?? [];
                   
                   if (categories.isEmpty) {
-                    return const Column(
+                    return Column(
                       children: [
-                        Text('No inventory categories found.'),
+                        const Text('No inventory categories found. Please create categories first.'),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _openCategoryManagement();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                          ),
+                          child: const Text('Manage Categories'),
+                        ),
                       ],
                     );
+                  }
+                  
+                  // Set default category if not set and categories exist
+                  if (selectedCategoryId.isEmpty && categories.isNotEmpty) {
+                    // Use Future.microtask to avoid setState during build
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        // This ensures the dropdown value is set after the widget is built
+                        setState(() {
+                          selectedCategoryId = categories.first.id;
+                          selectedCategoryName = categories.first.name;
+                          selectedColor = categories.first.color;
+                        });
+                      }
+                    });
                   }
                   
                   return Column(
@@ -706,52 +886,69 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                       TextFormField(
                         controller: nameController,
                         decoration: const InputDecoration(
-                          labelText: 'Item Name',
+                          labelText: 'Item Name *',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.inventory),
+                          hintText: 'e.g., Live Pig, Cooking Oil, Charcoal',
                         ),
                       ),
                       const SizedBox(height: 12),
 
-                      // Category Dropdown
-                      DropdownButtonFormField<String>(
-                        value: selectedCategoryId,
-                        decoration: const InputDecoration(
-                          labelText: 'Category *',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.category),
-                        ),
-                        items: categories
-                            .map<DropdownMenuItem<String>>((category) => DropdownMenuItem<String>(
-                                  value: category.id,
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 16,
-                                        height: 16,
-                                        decoration: BoxDecoration(
-                                          color: _parseColor(category.color),
-                                          borderRadius: BorderRadius.circular(4),
+                      // Category Dropdown - ADD NULL SAFETY CHECK
+                      if (categories.isNotEmpty && selectedCategoryId.isNotEmpty)
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedCategoryId,
+                          decoration: const InputDecoration(
+                            labelText: 'Category *',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.category),
+                          ),
+                          items: categories
+                              .map<DropdownMenuItem<String>>((category) => DropdownMenuItem<String>(
+                                    value: category.id,
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 16,
+                                          height: 16,
+                                          decoration: BoxDecoration(
+                                            color: _parseColor(category.color),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(category.name),
-                                    ],
-                                  ),
-                                ))
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            final category = categories
-                                .firstWhere((cat) => cat.id == value);
-                            setState(() {
-                              selectedCategoryId = value;
-                              selectedCategoryName = category.name;
-                              selectedColor = category.color;
-                            });
-                          }
-                        },
-                      ),
+                                        const SizedBox(width: 8),
+                                        Text(category.name),
+                                      ],
+                                    ),
+                                  ))
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              final category = categories
+                                  .firstWhere((cat) => cat.id == value);
+                              setState(() {
+                                selectedCategoryId = value;
+                                selectedCategoryName = category.name;
+                                selectedColor = category.color;
+                              });
+                            }
+                          },
+                        )
+                      else if (categories.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red.shade200),
+                          ),
+                          child: const Text(
+                            'No categories available. Please create categories first.',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        )
+                      else
+                        const CircularProgressIndicator(),
                       const SizedBox(height: 12),
 
                       TextFormField(
@@ -1407,10 +1604,17 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                   stream: InventoryService.getInventoryItems(),
                                                   builder: (context, snapshot) {
                                                     final items = snapshot.data ?? [];
+                                                    // Use a Set to ensure unique category names
                                                     final categories = items.map((item) => item.categoryName).toSet().toList();
                                                     
+                                                    // Sort categories alphabetically
+                                                    categories.sort();
+                                                    
+                                                    // Add 'All' option at the beginning
+                                                    final allCategories = ['All', ...categories];
+                                                    
                                                     return DropdownButtonFormField<String>(
-                                                      value: _selectedCategory,
+                                                      initialValue: _selectedCategory,
                                                       dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                                       style: TextStyle(color: textColor),
                                                       decoration: InputDecoration(
@@ -1431,25 +1635,26 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                         ),
                                                         prefixIcon: Icon(Icons.category, color: primaryColor),
                                                       ),
-                                                      items: ['All', ...categories]
+                                                      items: allCategories
                                                           .map((category) => DropdownMenuItem(
                                                                 value: category,
                                                                 child: Text(category, style: TextStyle(color: textColor)),
                                                               ))
                                                           .toList(),
                                                       onChanged: (value) {
-                                                        setState(() {
-                                                          _selectedCategory = value!;
-                                                        });
+                                                        if (value != null) {
+                                                          setState(() {
+                                                            _selectedCategory = value;
+                                                          });
+                                                        }
                                                       },
                                                     );
                                                   },
                                                 ),
                                               ),
-                                              const SizedBox(width: 16),
                                               Expanded(
                                                 child: DropdownButtonFormField<String>(
-                                                  value: _selectedStatus,
+                                                  initialValue: _selectedStatus,
                                                   dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                                   style: TextStyle(color: textColor),
                                                   decoration: InputDecoration(
@@ -1492,10 +1697,17 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                 stream: InventoryService.getInventoryItems(),
                                                 builder: (context, snapshot) {
                                                   final items = snapshot.data ?? [];
+                                                  // Use a Set to ensure unique category names
                                                   final categories = items.map((item) => item.categoryName).toSet().toList();
                                                   
+                                                  // Sort categories alphabetically
+                                                  categories.sort();
+                                                  
+                                                  // Add 'All' option at the beginning
+                                                  final allCategories = ['All', ...categories];
+                                                  
                                                   return DropdownButtonFormField<String>(
-                                                    value: _selectedCategory,
+                                                    initialValue: _selectedCategory,
                                                     dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                                     style: TextStyle(color: textColor),
                                                     decoration: InputDecoration(
@@ -1516,23 +1728,25 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                       ),
                                                       prefixIcon: Icon(Icons.category, color: primaryColor),
                                                     ),
-                                                    items: ['All', ...categories]
+                                                    items: allCategories
                                                         .map((category) => DropdownMenuItem(
                                                               value: category,
                                                               child: Text(category, style: TextStyle(color: textColor)),
                                                             ))
                                                         .toList(),
                                                     onChanged: (value) {
-                                                      setState(() {
-                                                        _selectedCategory = value!;
-                                                      });
+                                                      if (value != null) {
+                                                        setState(() {
+                                                          _selectedCategory = value;
+                                                        });
+                                                      }
                                                     },
                                                   );
                                                 },
                                               ),
                                               const SizedBox(height: 12),
                                               DropdownButtonFormField<String>(
-                                                value: _selectedStatus,
+                                                initialValue: _selectedStatus,
                                                 dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                                 style: TextStyle(color: textColor),
                                                 decoration: InputDecoration(
@@ -1554,15 +1768,17 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                   prefixIcon: Icon(Icons.info, color: primaryColor),
                                                 ),
                                                 items: ['All', 'In Stock', 'Low Stock', 'Out of Stock']
-                                                    .map((status) => DropdownMenuItem(
+                                                    .map((status) => DropdownMenuItem<String>(
                                                           value: status,
                                                           child: Text(status, style: TextStyle(color: textColor)),
                                                         ))
                                                     .toList(),
                                                 onChanged: (value) {
-                                                  setState(() {
-                                                    _selectedStatus = value!;
-                                                  });
+                                                  if (value != null) {
+                                                    setState(() {
+                                                      _selectedStatus = value;
+                                                    });
+                                                  }
                                                 },
                                               ),
                                             ],
@@ -1912,42 +2128,28 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                       DataColumn(label: Text('Min Stock')),
                                                       DataColumn(label: Text('Unit Cost')),
                                                       DataColumn(label: Text('Total Value')),
+                                                      DataColumn(label: Text('Used In')),
                                                       DataColumn(label: Text('Status')),
                                                       DataColumn(label: Text('Actions')),
                                                     ],
                                                     rows: filteredItems.map((item) {
                                                       return DataRow(
                                                         cells: [
+                                                          // 1. Item Name cell - FIX: This was missing
                                                           DataCell(
-                                                            Container(
-                                                              constraints: BoxConstraints(maxWidth: Responsive.width(context) * 0.15),
-                                                              child: Column(
-                                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                                mainAxisAlignment: MainAxisAlignment.center,
-                                                                children: [
-                                                                  Text(
-                                                                    item.name,
-                                                                    style: TextStyle(
-                                                                      fontWeight: FontWeight.bold,
-                                                                      color: textColor,
-                                                                    ),
-                                                                    maxLines: 2,
-                                                                    overflow: TextOverflow.ellipsis,
-                                                                  ),
-                                                                  if (item.description != null && item.description!.isNotEmpty)
-                                                                    Text(
-                                                                      item.description!,
-                                                                      style: TextStyle(
-                                                                        fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                                                                        color: mutedTextColor,
-                                                                      ),
-                                                                      maxLines: 1,
-                                                                      overflow: TextOverflow.ellipsis,
-                                                                    ),
-                                                                ],
+                                                            ConstrainedBox(
+                                                              constraints: const BoxConstraints(maxWidth: 200),
+                                                              child: Text(
+                                                                item.name,
+                                                                style: TextStyle(
+                                                                  fontWeight: FontWeight.bold,
+                                                                  color: textColor,
+                                                                ),
+                                                                overflow: TextOverflow.ellipsis,
                                                               ),
                                                             ),
                                                           ),
+                                                          // 2. Category cell
                                                           DataCell(
                                                             Container(
                                                               padding: EdgeInsets.symmetric(
@@ -1971,6 +2173,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                               ),
                                                             ),
                                                           ),
+                                                          // 3. Current Stock cell
                                                           DataCell(
                                                             Column(
                                                               mainAxisAlignment: MainAxisAlignment.center,
@@ -1983,15 +2186,25 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                                     color: item.needsReorder ? Colors.red : Colors.green,
                                                                   ),
                                                                 ),
+                                                                if (item.needsReorder)
+                                                                  Text(
+                                                                    'Below min!',
+                                                                    style: TextStyle(
+                                                                      fontSize: Responsive.getFontSize(context, mobile: 9, tablet: 10, desktop: 11),
+                                                                      color: Colors.red,
+                                                                    ),
+                                                                  ),
                                                               ],
                                                             ),
                                                           ),
+                                                          // 4. Minimum Stock cell
                                                           DataCell(
                                                             Text(
                                                               '${item.minimumStock} ${item.unit}',
                                                               style: TextStyle(color: textColor),
                                                             ),
                                                           ),
+                                                          // 5. Unit Cost cell
                                                           DataCell(
                                                             Text(
                                                               '₱${item.unitCost.toStringAsFixed(2)}',
@@ -2001,6 +2214,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                               ),
                                                             ),
                                                           ),
+                                                          // 6. Total Value cell
                                                           DataCell(
                                                             Text(
                                                               '₱${item.stockValue.toStringAsFixed(2)}',
@@ -2010,6 +2224,52 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                               ),
                                                             ),
                                                           ),
+                                                          // 7. Used In cell - This was originally the first cell, but should be 7th
+                                                          DataCell(
+                                                            FutureBuilder<List<Product>>(
+                                                              future: ProductService.getProducts().first,
+                                                              builder: (context, snapshot) {
+                                                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                                                  return const SizedBox(
+                                                                    width: 20,
+                                                                    height: 20,
+                                                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                                                  );
+                                                                }
+                                                                
+                                                                final allProducts = snapshot.data ?? [];
+                                                                final productsUsingThisItem = allProducts.where((product) {
+                                                                  return product.ingredients?.any((ingredient) => 
+                                                                      ingredient.inventoryId == item.id) ?? false;
+                                                                }).toList();
+                                                                
+                                                                if (productsUsingThisItem.isEmpty) {
+                                                                  return Text('-', style: TextStyle(color: mutedTextColor));
+                                                                }
+                                                                
+                                                                return Tooltip(
+                                                                  message: productsUsingThisItem.map((p) => p.name).join(', '),
+                                                                  child: Container(
+                                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                                    decoration: BoxDecoration(
+                                                                      color: Colors.blue.withOpacity(0.1),
+                                                                      borderRadius: BorderRadius.circular(4),
+                                                                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                                                                    ),
+                                                                    child: Text(
+                                                                      '${productsUsingThisItem.length} product${productsUsingThisItem.length == 1 ? '' : 's'}',
+                                                                      style: const TextStyle(
+                                                                        color: Colors.blue,
+                                                                        fontWeight: FontWeight.bold,
+                                                                        fontSize: 12,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                );
+                                                              },
+                                                            ),
+                                                          ),
+                                                          // 8. Status cell
                                                           DataCell(
                                                             Container(
                                                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -2030,6 +2290,7 @@ class _InventoryMonitoringState extends State<InventoryMonitoring> with Settings
                                                               ),
                                                             ),
                                                           ),
+                                                          // 9. Actions cell
                                                           DataCell(
                                                             Row(
                                                               children: [

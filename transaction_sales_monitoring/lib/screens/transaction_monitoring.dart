@@ -1,9 +1,16 @@
-// lib/screens/inventory_monitoring.dart - UPDATED VERSION
+// lib/screens/transaction_monitoring.dart - FIXED VERSION
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../utils/settings_mixin.dart';
 import '../models/transaction.dart';
 import '../utils/responsive.dart';
 import '../services/transaction_service.dart';
+import '../widgets/loading_overlay.dart';
+import '../widgets/top_loading_indicator.dart';
+import '../widgets/transaction_card.dart';
 
 class TransactionMonitoring extends StatefulWidget {
   const TransactionMonitoring({super.key});
@@ -21,16 +28,28 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
   List<TransactionModel> _transactions = [];
   bool _isLoadingTransactions = true;
   bool _isInitialLoad = true;
+  bool _showTopLoading = false;
   
   // Filter states
   DateTime _selectedDate = DateTime.now();
   String _selectedStatus = 'All';
   String _selectedPaymentMethod = 'All';
+  String _selectedTimeFilter = 'Daily'; // Daily, Weekly, Monthly
   final TextEditingController _searchController = TextEditingController();
 
   // Sales statistics
   Map<String, dynamic> _salesStats = {};
   bool _isLoadingStats = true;
+
+  // Expanded state for transaction cards - FIXED: Using ValueNotifier for reactivity
+  final ValueNotifier<Map<String, bool>> _expandedState = ValueNotifier<Map<String, bool>>({});
+  
+  // Scroll controller for back to top button
+  final ScrollController _scrollController = ScrollController();
+  bool _showBackToTopButton = false;
+
+  // Collapse all state - FIXED: Using ValueNotifier
+  final ValueNotifier<bool> _allCollapsed = ValueNotifier<bool>(false);
 
   @override
   void initState() {
@@ -38,6 +57,19 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
     _loadSettings();
     _loadTransactions();
     _loadSalesStatistics();
+    
+    // Set up scroll listener for back to top button
+    _scrollController.addListener(() {
+      if (_scrollController.offset > 400 && !_showBackToTopButton) {
+        setState(() {
+          _showBackToTopButton = true;
+        });
+      } else if (_scrollController.offset <= 400 && _showBackToTopButton) {
+        setState(() {
+          _showBackToTopButton = false;
+        });
+      }
+    });
     
     // Initial data load with delay to show skeleton
     Future.delayed(const Duration(milliseconds: 300), () {
@@ -49,56 +81,72 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
     });
   }
 
+  @override
+  void dispose() {
+    // Dispose all controllers
+    _searchController.dispose();
+    _scrollController.dispose();
+    _expandedState.dispose();
+    _allCollapsed.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadSettings() async {
     setState(() => _isLoadingSettings = true);
     try {
+      // Load any necessary settings
     } catch (e) {
-      print('Error loading settings in transactions: $e');
     }
     setState(() => _isLoadingSettings = false);
   }
 
   Future<void> _loadTransactions() async {
-    setState(() => _isLoadingTransactions = true);
+    setState(() {
+      _isLoadingTransactions = true;
+      _showTopLoading = true;
+    });
+    
     try {
       _transactionsStream = TransactionService.getTransactionsStream();
+      
       // Listen to the stream and update local list
       _transactionsStream?.listen((transactions) {
         if (mounted) {
-          print('Received ${transactions.length} transactions from Firebase');
-          if (transactions.isNotEmpty) {
-            print('First transaction: ${transactions.first.transactionNumber}');
-            print('Customer: ${transactions.first.customerName}');
-            print('Total: ${transactions.first.totalAmount}');
-            print('Items: ${transactions.first.items.length}');
-          }
+          // Filter out error transactions
+          final validTransactions = transactions.where((transaction) => 
+            !transaction.transactionNumber.startsWith('#ERROR-') && 
+            !transaction.customerName.contains('Error Loading')
+          ).toList();
+          
           
           setState(() {
-            _transactions = transactions;
+            _transactions = validTransactions;
             _isLoadingTransactions = false;
+            _showTopLoading = false;
           });
         }
       }, onError: (error) {
-        print('Error in transactions stream: $error');
-        setState(() => _isLoadingTransactions = false);
+        if (mounted) {
+          setState(() {
+            _isLoadingTransactions = false;
+            _showTopLoading = false;
+          });
+        }
       });
     } catch (e) {
-      print('Error loading transactions: $e');
-      setState(() => _isLoadingTransactions = false);
+      setState(() {
+        _isLoadingTransactions = false;
+        _showTopLoading = false;
+      });
     }
   }
 
   Future<void> _loadSalesStatistics() async {
     setState(() => _isLoadingStats = true);
     try {
-      final now = DateTime.now();
-      final startOfDay = DateTime(now.year, now.month, now.day, 0, 0, 0);
-      final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
-      
-      _salesStats = await TransactionService.getDailySummary(now);
+      _salesStats = await TransactionService.getDailySummary(DateTime.now());
       setState(() => _isLoadingStats = false);
     } catch (e) {
-      print('Error loading sales statistics: $e');
       setState(() {
         _salesStats = {
           'totalSales': 0.0,
@@ -112,67 +160,148 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
     }
   }
 
-  // Calculate statistics from local data
-  double get _todaySales {
+  // Calculate statistics from local data with time filter
+  double get _filteredSales {
     if (_isLoadingStats) return 0.0;
-    return _salesStats['totalSales'] as double? ?? 0.0;
-  }
-
-  int get _todayTransactions {
-    if (_isLoadingStats) return 0;
-    return _salesStats['totalTransactions'] as int? ?? 0;
-  }
-
-  double get _weeklySales {
-    // Calculate weekly sales from transactions
-    final weekAgo = DateTime.now().subtract(const Duration(days: 7));
-    return _transactions
-        .where((t) => t.transactionDate.isAfter(weekAgo))
+    
+    final now = DateTime.now();
+    DateTime startDate;
+    
+    switch (_selectedTimeFilter) {
+      case 'Weekly':
+        startDate = now.subtract(const Duration(days: 7));
+        break;
+      case 'Monthly':
+        startDate = DateTime(now.year, now.month - 1, now.day);
+        break;
+      default: // Daily
+        startDate = DateTime(now.year, now.month, now.day);
+        break;
+    }
+    
+    return _filteredTransactions
+        .where((t) => t.transactionDate.isAfter(startDate))
         .fold(0.0, (sum, t) => sum + t.totalAmount);
   }
 
-  // ignore: unused_element
-  int get _weeklyTransactions {
-    final weekAgo = DateTime.now().subtract(const Duration(days: 7));
-    return _transactions
-        .where((t) => t.transactionDate.isAfter(weekAgo))
+  int get _filteredTransactionsCount {
+    final now = DateTime.now();
+    DateTime startDate;
+    
+    switch (_selectedTimeFilter) {
+      case 'Weekly':
+        startDate = now.subtract(const Duration(days: 7));
+        break;
+      case 'Monthly':
+        startDate = DateTime(now.year, now.month - 1, now.day);
+        break;
+      default: // Daily
+        startDate = DateTime(now.year, now.month, now.day);
+        break;
+    }
+    
+    return _filteredTransactions
+        .where((t) => t.transactionDate.isAfter(startDate))
         .length;
   }
 
-  int get _pendingTransactions {
-    return _transactions
-        .where((t) => t.status == 'Pending')
+  int get _pendingTransactionsCount {
+    return _filteredTransactions
+        .where((t) => t.status == 'Partial')
         .length;
   }
 
   List<TransactionModel> get _filteredTransactions {
     return _transactions.where((transaction) {
-      final matchesDate = transaction.transactionDate.day == _selectedDate.day &&
-                         transaction.transactionDate.month == _selectedDate.month &&
-                         transaction.transactionDate.year == _selectedDate.year;
+      // Apply time filter
+      final now = DateTime.now();
+      bool matchesTimeFilter = false;
+      
+      switch (_selectedTimeFilter) {
+        case 'Weekly':
+          final weekAgo = now.subtract(const Duration(days: 7));
+          matchesTimeFilter = transaction.transactionDate.isAfter(weekAgo);
+          break;
+        case 'Monthly':
+          final monthAgo = DateTime(now.year, now.month - 1, now.day);
+          matchesTimeFilter = transaction.transactionDate.isAfter(monthAgo);
+          break;
+        default: // Daily
+          matchesTimeFilter = transaction.transactionDate.day == _selectedDate.day &&
+                             transaction.transactionDate.month == _selectedDate.month &&
+                             transaction.transactionDate.year == _selectedDate.year;
+          break;
+      }
+      
       final matchesStatus = _selectedStatus == 'All' || transaction.status == _selectedStatus;
       final matchesPaymentMethod = _selectedPaymentMethod == 'All' || transaction.paymentMethod == _selectedPaymentMethod;
       final matchesSearch = _searchController.text.isEmpty ||
           transaction.customerName.toLowerCase().contains(_searchController.text.toLowerCase()) ||
           transaction.transactionNumber.toLowerCase().contains(_searchController.text.toLowerCase());
       
-      return matchesDate && matchesStatus && matchesPaymentMethod && matchesSearch;
+      return matchesTimeFilter && matchesStatus && matchesPaymentMethod && matchesSearch;
     }).toList();
   }
 
-  Future<void> _markAsComplete(TransactionModel transaction) async {
+  // NEW FUNCTION: Toggle collapse all - FIXED VERSION
+  void _toggleCollapseAll() {
+    // Toggle the state
+    _allCollapsed.value = !_allCollapsed.value;
+    
+    // Create a new map with all transactions collapsed/expanded
+    final newState = <String, bool>{};
+    for (var transaction in _filteredTransactions) {
+      newState[transaction.id] = _allCollapsed.value;
+    }
+    
+    // Update the expanded state notifier
+    _expandedState.value = newState;
+  }
+
+  // Back to top function
+  void _scrollToTop() {
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  // Function to handle partial payment updates - FIXED VERSION
+  Future<void> _handlePartialPayment(TransactionModel transaction, double amount) async {
+    LoadingOverlay.show(context, message: 'Processing payment...');
+    
     try {
-      final result = await TransactionService.updateTransactionStatus(
+      final result = await TransactionService.updateTransactionPayment(
         transaction.id,
-        'Completed',
-        'Marked as complete via Transaction Monitoring',
+        amount,
+        'Payment update via Transaction Monitoring',
       );
       
+      LoadingOverlay.hide();
+      
       if (result['success'] == true) {
+        // IMMEDIATE STATE UPDATE: Update the local transaction
+        setState(() {
+          // Find and update the transaction in the local list
+          final index = _transactions.indexWhere((t) => t.id == transaction.id);
+          if (index != -1) {
+            // Create updated transaction with new values
+            final updatedTransaction = _transactions[index].copyWith(
+              amountPaid: (result['newAmountPaid'] as double?) ?? (transaction.amountPaid + amount),
+              cashReceived: transaction.cashReceived + amount,
+              status: (result['newStatus'] as String?) ?? 
+                      (transaction.amountPaid + amount >= transaction.totalAmount ? 'Completed' : 'Partial'),
+            );
+            _transactions[index] = updatedTransaction;
+          }
+        });
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Transaction ${transaction.transactionNumber} marked as completed'),
+            content: Text('Payment of ₱${amount.toStringAsFixed(2)} recorded successfully'),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
           ),
         );
       } else {
@@ -180,14 +309,335 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
           SnackBar(
             content: Text('Error: ${result['error']}'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
     } catch (e) {
+      LoadingOverlay.hide();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error processing payment: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Future<void> _markAsComplete(TransactionModel transaction) async {
+    LoadingOverlay.show(context, message: 'Updating order...');
+    try {
+      final result = await TransactionService.updateTransactionStatus(
+        transaction.id,
+        'Completed',
+        'Marked as complete via Transaction Monitoring',
+      );
+      
+      LoadingOverlay.hide();
+      
+      if (result['success'] == true) {
+        // IMMEDIATE STATE UPDATE
+        setState(() {
+          final index = _transactions.indexWhere((t) => t.id == transaction.id);
+          if (index != -1) {
+            _transactions[index] = _transactions[index].copyWith(status: 'Completed');
+          }
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Transaction ${transaction.transactionNumber} marked as completed'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${result['error']}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      LoadingOverlay.hide();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error: $e'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Future<void> _cancelOrder(TransactionModel transaction) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Order'),
+        content: const Text('Are you sure you want to cancel this order? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Yes, Cancel Order'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      LoadingOverlay.show(context, message: 'Cancelling order...');
+      try {
+        final result = await TransactionService.updateTransactionStatus(
+          transaction.id,
+          'Cancelled',
+          'Order cancelled by admin',
+        );
+        
+        LoadingOverlay.hide();
+        
+        if (result['success'] == true) {
+          // IMMEDIATE STATE UPDATE
+          setState(() {
+            final index = _transactions.indexWhere((t) => t.id == transaction.id);
+            if (index != -1) {
+              _transactions[index] = _transactions[index].copyWith(status: 'Cancelled');
+            }
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Order ${transaction.transactionNumber} has been cancelled'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${result['error']}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      } catch (e) {
+        LoadingOverlay.hide();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _generateReceiptPDF(TransactionModel transaction) async {
+    LoadingOverlay.show(context, message: 'Generating receipt...');
+    
+    try {
+      // Create PDF document
+      final pdf = pw.Document();
+      
+      // Add content to PDF
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                // Header
+                pw.Center(
+                  child: pw.Text(
+                    'RECEIPT',
+                    style: pw.TextStyle(
+                      fontSize: 24,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ),
+                pw.SizedBox(height: 20),
+                
+                // Transaction Info
+                pw.Text(
+                  'Transaction #: ${transaction.transactionNumber}',
+                  style: const pw.TextStyle(fontSize: 14),
+                ),
+                pw.Text(
+                  'Date: ${transaction.formattedDate} ${transaction.formattedTime}',
+                  style: const pw.TextStyle(fontSize: 14),
+                ),
+                pw.Text(
+                  'Status: ${transaction.status}',
+                  style: const pw.TextStyle(fontSize: 14),
+                ),
+                pw.SizedBox(height: 10),
+                
+                // Customer Info
+                pw.Text(
+                  'Customer: ${transaction.customerName}',
+                  style: const pw.TextStyle(fontSize: 14),
+                ),
+                if (transaction.customerPhone.isNotEmpty && transaction.customerPhone != '-')
+                  pw.Text(
+                    'Phone: ${transaction.customerPhone}',
+                    style: const pw.TextStyle(fontSize: 14),
+                  ),
+                pw.SizedBox(height: 20),
+                
+                // Items Table
+                pw.Table(
+                  border: pw.TableBorder.all(),
+                  children: [
+                    pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          child: pw.Text('Item', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                          padding: const pw.EdgeInsets.all(8),
+                        ),
+                        pw.Padding(
+                          child: pw.Text('Qty', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                          padding: const pw.EdgeInsets.all(8),
+                        ),
+                        pw.Padding(
+                          child: pw.Text('Price', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                          padding: const pw.EdgeInsets.all(8),
+                        ),
+                        pw.Padding(
+                          child: pw.Text('Total', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                          padding: const pw.EdgeInsets.all(8),
+                        ),
+                      ],
+                    ),
+                    ...transaction.items.map((item) => pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          child: pw.Text(item.productName),
+                          padding: const pw.EdgeInsets.all(8),
+                        ),
+                        pw.Padding(
+                          child: pw.Text(item.quantity.toString()),
+                          padding: const pw.EdgeInsets.all(8),
+                        ),
+                        pw.Padding(
+                          child: pw.Text('₱${item.unitPrice.toStringAsFixed(2)}'),
+                          padding: const pw.EdgeInsets.all(8),
+                        ),
+                        pw.Padding(
+                          child: pw.Text('₱${item.total.toStringAsFixed(2)}'),
+                          padding: const pw.EdgeInsets.all(8),
+                        ),
+                      ],
+                    )),
+                  ],
+                ),
+                pw.SizedBox(height: 20),
+                
+                // Summary
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'Total Amount:',
+                      style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.Text(
+                      '₱${transaction.totalAmount.toStringAsFixed(2)}',
+                      style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+                    ),
+                  ],
+                ),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Amount Paid:'),
+                    pw.Text('₱${transaction.amountPaid.toStringAsFixed(2)}'),
+                  ],
+                ),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Cash Received:'),
+                    pw.Text('₱${transaction.cashReceived.toStringAsFixed(2)}'),
+                  ],
+                ),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Change:'),
+                    pw.Text('₱${transaction.change.toStringAsFixed(2)}'),
+                  ],
+                ),
+                if (transaction.status == 'Partial')
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text(
+                        'Remaining Balance:',
+                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                      ),
+                      pw.Text(
+                        '₱${(transaction.totalAmount - transaction.amountPaid).toStringAsFixed(2)}',
+                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                pw.SizedBox(height: 10),
+                
+                // Payment Method
+                pw.Text(
+                  'Payment Method: ${transaction.paymentMethod}',
+                  style: const pw.TextStyle(fontSize: 14),
+                ),
+                
+                // Footer
+                pw.SizedBox(height: 30),
+                pw.Center(
+                  child: pw.Text(
+                    'Thank you for your business!',
+                    style: pw.TextStyle(fontSize: 14, fontStyle: pw.FontStyle.italic),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+      
+      // Save PDF to device
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/receipt_${transaction.transactionNumber.replaceAll('#', '')}.pdf');
+      await file.writeAsBytes(await pdf.save());
+      
+      LoadingOverlay.hide();
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Receipt saved as PDF: ${file.path}'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      
+    } catch (e) {
+      LoadingOverlay.hide();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error generating PDF: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
         ),
       );
     }
@@ -195,10 +645,6 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingSettings || _isInitialLoad) {
-      return _buildSkeletonScreen(context);
-    }
-    
     final primaryColor = getPrimaryColor();
     final isMobile = Responsive.isMobile(context);
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -209,227 +655,139 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
     final textColor = isDarkMode ? Colors.white : Colors.black87;
     final mutedTextColor = isDarkMode ? Colors.grey.shade400 : Colors.grey.shade600;
     
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            padding: Responsive.getScreenPadding(context),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: constraints.maxHeight,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Transaction Stats Card
-                  if (_isLoadingStats || _isLoadingTransactions)
-                    _buildSkeletonStatsCard(isMobile, isDarkMode, cardColor, context)
-                  else
-                    _buildTransactionStatsCard(
-                      primaryColor,
-                      isDarkMode,
-                      cardColor,
-                      textColor,
-                      context,
-                    ),
-
-                  const SizedBox(height: 16),
-
-                  // Filters Card
-                  Container(
-                    constraints: BoxConstraints(
-                      minHeight: isMobile ? 200 : 150,
-                    ),
-                    child: Card(
-                      elevation: isDarkMode ? 2 : 3,
-                      color: cardColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                          width: 1,
-                        ),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: backgroundColor,
+          body: Stack(
+            children: [
+              // Main content with scroll
+              SingleChildScrollView(
+                controller: _scrollController,
+                padding: Responsive.getScreenPadding(context),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Transaction Stats Card
+                    if (_isLoadingStats || _isLoadingTransactions)
+                      _buildSkeletonStatsCard(isMobile, isDarkMode, cardColor, context)
+                    else
+                      _buildTransactionStatsCard(
+                        primaryColor,
+                        isDarkMode,
+                        cardColor,
+                        textColor,
+                        context,
                       ),
-                      child: Padding(
-                        padding: Responsive.getCardPadding(context),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: primaryColor.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(
-                                    Icons.filter_list,
-                                    color: primaryColor,
-                                    size: 20,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'FILTER TRANSACTIONS',
-                                    style: TextStyle(
-                                      fontSize: Responsive.getTitleFontSize(context),
-                                      fontWeight: FontWeight.bold,
-                                      color: primaryColor,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            
-                            if (isMobile)
-                              Column(
-                                children: [
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(8),
-                                      color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade100,
-                                      border: Border.all(
-                                        color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                                      ),
-                                    ),
-                                    child: TextField(
-                                      controller: _searchController,
-                                      style: TextStyle(color: textColor),
-                                      decoration: InputDecoration(
-                                        hintText: 'Search by customer or transaction #',
-                                        hintStyle: TextStyle(color: mutedTextColor),
-                                        prefixIcon: Icon(Icons.search, color: primaryColor),
-                                        border: InputBorder.none,
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                      ),
-                                      onChanged: (value) => setState(() {}),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    decoration: BoxDecoration(
-                                      border: Border.all(color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300),
-                                      borderRadius: BorderRadius.circular(8),
-                                      color: isDarkMode ? Colors.grey.shade800 : Colors.white,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.calendar_today, size: 20, color: primaryColor),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: textColor,
-                                            ),
-                                          ),
-                                        ),
-                                        IconButton(
-                                          icon: Icon(Icons.arrow_drop_down, size: 20, color: primaryColor),
-                                          onPressed: () async {
-                                            final picked = await showDatePicker(
-                                              context: context,
-                                              initialDate: _selectedDate,
-                                              firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                                              lastDate: DateTime.now(),
-                                            );
-                                            if (picked != null) {
-                                              setState(() {
-                                                _selectedDate = picked;
-                                              });
-                                            }
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  DropdownButtonFormField<String>(
-                                    value: _selectedStatus,
-                                    dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
-                                    style: TextStyle(color: textColor),
-                                    decoration: InputDecoration(
-                                      labelText: 'Status',
-                                      labelStyle: TextStyle(color: mutedTextColor),
-                                      border: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(color: primaryColor),
-                                      ),
-                                      prefixIcon: Icon(Icons.stairs, color: primaryColor),
-                                    ),
-                                    items: ['All', 'Completed', 'Pending', 'Cancelled', 'Refunded']
-                                        .map((status) => DropdownMenuItem(
-                                              value: status,
-                                              child: Text(status, style: TextStyle(color: textColor)),
-                                            ))
-                                        .toList(),
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _selectedStatus = value!;
-                                      });
-                                    },
-                                  ),
-                                  const SizedBox(height: 12),
-                                  DropdownButtonFormField<String>(
-                                    value: _selectedPaymentMethod,
-                                    dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
-                                    style: TextStyle(color: textColor),
-                                    decoration: InputDecoration(
-                                      labelText: 'Payment Method',
-                                      labelStyle: TextStyle(color: mutedTextColor),
-                                      border: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(color: primaryColor),
-                                      ),
-                                      prefixIcon: Icon(Icons.payment, color: primaryColor),
-                                    ),
-                                    items: ['All', 'Cash', 'GCash', 'Bank Transfer', 'Credit Card', 'PayMaya']
-                                        .map((method) => DropdownMenuItem(
-                                              value: method,
-                                              child: Text(method, style: TextStyle(color: textColor)),
-                                            ))
-                                        .toList(),
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _selectedPaymentMethod = value!;
-                                      });
-                                    },
-                                  ),
-                                ],
-                              )
-                            else
+
+                    const SizedBox(height: 16),
+
+                    // Filters Card
+                    Container(
+                      constraints: BoxConstraints(
+                        minHeight: isMobile ? 250 : 180,
+                      ),
+                      child: Card(
+                        elevation: isDarkMode ? 2 : 3,
+                        color: cardColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                            width: 1,
+                          ),
+                        ),
+                        child: Padding(
+                          padding: Responsive.getCardPadding(context),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                               Row(
                                 children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: primaryColor.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      Icons.filter_list,
+                                      color: primaryColor,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
                                   Expanded(
-                                    flex: 3,
-                                    child: Container(
+                                    child: Text(
+                                      'FILTER TRANSACTIONS',
+                                      style: TextStyle(
+                                        fontSize: Responsive.getTitleFontSize(context),
+                                        fontWeight: FontWeight.bold,
+                                        color: primaryColor,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              
+                              // Time Filter (Daily/Weekly/Monthly)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                  children: ['Daily', 'Weekly', 'Monthly'].map((filter) {
+                                    final isSelected = _selectedTimeFilter == filter;
+                                    return GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedTimeFilter = filter;
+                                          if (filter == 'Daily') {
+                                            _selectedDate = DateTime.now();
+                                          }
+                                        });
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: isSelected 
+                                            ? primaryColor 
+                                            : Colors.transparent,
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(
+                                            color: isSelected 
+                                              ? primaryColor 
+                                              : (isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          filter,
+                                          style: TextStyle(
+                                            color: isSelected 
+                                              ? Colors.white 
+                                              : textColor,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                              
+                              const SizedBox(height: 12),
+                              
+                              if (isMobile)
+                                Column(
+                                  children: [
+                                    Container(
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(8),
                                         color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade100,
@@ -441,7 +799,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                         controller: _searchController,
                                         style: TextStyle(color: textColor),
                                         decoration: InputDecoration(
-                                          hintText: 'Search by customer name or transaction number...',
+                                          hintText: 'Search by customer or transaction #',
                                           hintStyle: TextStyle(color: mutedTextColor),
                                           prefixIcon: Icon(Icons.search, color: primaryColor),
                                           border: InputBorder.none,
@@ -450,56 +808,52 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                         onChanged: (value) => setState(() {}),
                                       ),
                                     ),
-                                  ),
-                                  SizedBox(width: Responsive.getHorizontalSpacing(context).width),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300),
-                                        borderRadius: BorderRadius.circular(8),
-                                        color: isDarkMode ? Colors.grey.shade800 : Colors.white,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.calendar_today, size: 20, color: primaryColor),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color: textColor,
+                                    const SizedBox(height: 12),
+                                    
+                                    if (_selectedTimeFilter == 'Daily')
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300),
+                                          borderRadius: BorderRadius.circular(8),
+                                          color: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.calendar_today, size: 20, color: primaryColor),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: textColor,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          IconButton(
-                                            icon: Icon(Icons.arrow_drop_down, size: 20, color: primaryColor),
-                                            onPressed: () async {
-                                              final picked = await showDatePicker(
-                                                context: context,
-                                                initialDate: _selectedDate,
-                                                firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                                                lastDate: DateTime.now(),
-                                              );
-                                              if (picked != null) {
-                                                setState(() {
-                                                  _selectedDate = picked;
-                                                });
-                                              }
-                                            },
-                                          ),
-                                        ],
+                                            IconButton(
+                                              icon: Icon(Icons.arrow_drop_down, size: 20, color: primaryColor),
+                                              onPressed: () async {
+                                                final picked = await showDatePicker(
+                                                  context: context,
+                                                  initialDate: _selectedDate,
+                                                  firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                                                  lastDate: DateTime.now(),
+                                                );
+                                                if (picked != null) {
+                                                  setState(() {
+                                                    _selectedDate = picked;
+                                                  });
+                                                }
+                                              },
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                  SizedBox(width: Responsive.getHorizontalSpacing(context).width),
-                                  Expanded(
-                                    flex: 2,
-                                    child: DropdownButtonFormField<String>(
-                                      value: _selectedStatus,
-                                      isExpanded: true,
+                                    
+                                    const SizedBox(height: 12),
+                                    DropdownButtonFormField<String>(
+                                      initialValue: _selectedStatus,
                                       dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                       style: TextStyle(color: textColor),
                                       decoration: InputDecoration(
@@ -520,14 +874,10 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                         ),
                                         prefixIcon: Icon(Icons.stairs, color: primaryColor),
                                       ),
-                                      items: ['All', 'Completed', 'Pending', 'Cancelled', 'Refunded']
+                                      items: ['All', 'Completed', 'Partial', 'Cancelled']
                                           .map((status) => DropdownMenuItem(
                                                 value: status,
-                                                child: Text(
-                                                  status,
-                                                  style: TextStyle(color: textColor),
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
+                                                child: Text(status, style: TextStyle(color: textColor)),
                                               ))
                                           .toList(),
                                       onChanged: (value) {
@@ -536,13 +886,9 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                         });
                                       },
                                     ),
-                                  ),
-                                  SizedBox(width: Responsive.getHorizontalSpacing(context).width),
-                                  Expanded(
-                                    flex: 2,
-                                    child: DropdownButtonFormField<String>(
-                                      value: _selectedPaymentMethod,
-                                      isExpanded: true,
+                                    const SizedBox(height: 12),
+                                    DropdownButtonFormField<String>(
+                                      initialValue: _selectedPaymentMethod,
                                       dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
                                       style: TextStyle(color: textColor),
                                       decoration: InputDecoration(
@@ -566,11 +912,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                       items: ['All', 'Cash', 'GCash', 'Bank Transfer', 'Credit Card', 'PayMaya']
                                           .map((method) => DropdownMenuItem(
                                                 value: method,
-                                                child: Text(
-                                                  method,
-                                                  style: TextStyle(color: textColor),
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
+                                                child: Text(method, style: TextStyle(color: textColor)),
                                               ))
                                           .toList(),
                                       onChanged: (value) {
@@ -579,153 +921,375 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                                         });
                                       },
                                     ),
-                                  ),
-                                ],
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Transactions List Card
-                  Container(
-                    constraints: const BoxConstraints(
-                      minHeight: 200,
-                    ),
-                    child: Card(
-                      elevation: isDarkMode ? 2 : 3,
-                      color: cardColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-                          width: 1,
-                        ),
-                      ),
-                      child: Padding(
-                        padding: Responsive.getCardPadding(context),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
+                                  ],
+                                )
+                              else
                                 Row(
                                   children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: primaryColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Icon(
-                                        Icons.receipt,
-                                        color: primaryColor,
-                                        size: 20,
+                                    Expanded(
+                                      flex: 3,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(8),
+                                          color: isDarkMode ? Colors.grey.shade800 : Colors.grey.shade100,
+                                          border: Border.all(
+                                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                                          ),
+                                        ),
+                                        child: TextField(
+                                          controller: _searchController,
+                                          style: TextStyle(color: textColor),
+                                          decoration: InputDecoration(
+                                            hintText: 'Search by customer name or transaction number...',
+                                            hintStyle: TextStyle(color: mutedTextColor),
+                                            prefixIcon: Icon(Icons.search, color: primaryColor),
+                                            border: InputBorder.none,
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          ),
+                                          onChanged: (value) => setState(() {}),
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'TRANSACTION HISTORY',
-                                      style: TextStyle(
-                                        fontSize: Responsive.getTitleFontSize(context),
-                                        fontWeight: FontWeight.bold,
-                                        color: primaryColor,
+                                    SizedBox(width: Responsive.getHorizontalSpacing(context).width),
+                                    
+                                    if (_selectedTimeFilter == 'Daily')
+                                      Expanded(
+                                        flex: 2,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            border: Border.all(color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300),
+                                            borderRadius: BorderRadius.circular(8),
+                                            color: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.calendar_today, size: 20, color: primaryColor),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: textColor,
+                                                  ),
+                                                ),
+                                              ),
+                                              IconButton(
+                                                icon: Icon(Icons.arrow_drop_down, size: 20, color: primaryColor),
+                                                onPressed: () async {
+                                                  final picked = await showDatePicker(
+                                                    context: context,
+                                                    initialDate: _selectedDate,
+                                                    firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                                                    lastDate: DateTime.now(),
+                                                  );
+                                                  if (picked != null) {
+                                                    setState(() {
+                                                      _selectedDate = picked;
+                                                    });
+                                                  }
+                                                },
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    
+                                    if (_selectedTimeFilter == 'Daily')
+                                      SizedBox(width: Responsive.getHorizontalSpacing(context).width),
+                                    
+                                    Expanded(
+                                      flex: 2,
+                                      child: DropdownButtonFormField<String>(
+                                        initialValue: _selectedStatus,
+                                        isExpanded: true,
+                                        dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                                        style: TextStyle(color: textColor),
+                                        decoration: InputDecoration(
+                                          labelText: 'Status',
+                                          labelStyle: TextStyle(color: mutedTextColor),
+                                          border: OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                            ),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                            ),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderSide: BorderSide(color: primaryColor),
+                                          ),
+                                          prefixIcon: Icon(Icons.stairs, color: primaryColor),
+                                        ),
+                                        items: ['All', 'Completed', 'Partial', 'Cancelled']
+                                            .map((status) => DropdownMenuItem(
+                                                  value: status,
+                                                  child: Text(
+                                                    status,
+                                                    style: TextStyle(color: textColor),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ))
+                                            .toList(),
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _selectedStatus = value!;
+                                          });
+                                        },
+                                      ),
+                                    ),
+                                    SizedBox(width: Responsive.getHorizontalSpacing(context).width),
+                                    Expanded(
+                                      flex: 2,
+                                      child: DropdownButtonFormField<String>(
+                                        initialValue: _selectedPaymentMethod,
+                                        isExpanded: true,
+                                        dropdownColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
+                                        style: TextStyle(color: textColor),
+                                        decoration: InputDecoration(
+                                          labelText: 'Payment Method',
+                                          labelStyle: TextStyle(color: mutedTextColor),
+                                          border: OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                            ),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderSide: BorderSide(
+                                              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade400,
+                                            ),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderSide: BorderSide(color: primaryColor),
+                                          ),
+                                          prefixIcon: Icon(Icons.payment, color: primaryColor),
+                                        ),
+                                        items: ['All', 'Cash', 'GCash', 'Bank Transfer', 'Credit Card', 'PayMaya']
+                                            .map((method) => DropdownMenuItem(
+                                                  value: method,
+                                                  child: Text(
+                                                    method,
+                                                    style: TextStyle(color: textColor),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ))
+                                            .toList(),
+                                        onChanged: (value) {
+                                          setState(() {
+                                            _selectedPaymentMethod = value!;
+                                          });
+                                        },
                                       ),
                                     ),
                                   ],
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: primaryColor.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: primaryColor.withOpacity(0.3)),
-                                  ),
-                                  child: Text(
-                                    'Total: ${_filteredTransactions.length}',
-                                    style: TextStyle(
-                                      fontSize: Responsive.getBodyFontSize(context),
-                                      color: primaryColor,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            
-                            if (_isLoadingTransactions)
-                              _buildSkeletonTransactions(isDarkMode, mutedTextColor, context)
-                            else if (_filteredTransactions.isEmpty)
-                              Container(
-                                constraints: const BoxConstraints(
-                                  minHeight: 150,
-                                ),
-                                child: Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Transactions List Card
+                    Container(
+                      constraints: const BoxConstraints(
+                        minHeight: 200,
+                      ),
+                      child: Card(
+                        elevation: isDarkMode ? 2 : 3,
+                        color: cardColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                            width: 1,
+                          ),
+                        ),
+                        child: Padding(
+                          padding: Responsive.getCardPadding(context),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
                                     children: [
-                                      Icon(
-                                        Icons.receipt_long,
-                                        size: 60,
-                                        color: mutedTextColor,
-                                      ),
-                                      const SizedBox(height: 16),
-                                      Text(
-                                        'No transactions found',
-                                        style: TextStyle(
-                                          fontSize: Responsive.getBodyFontSize(context),
-                                          color: mutedTextColor,
-                                          fontWeight: FontWeight.bold,
+                                      Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: primaryColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(
+                                          Icons.receipt,
+                                          color: primaryColor,
+                                          size: 20,
                                         ),
                                       ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(width: 8),
                                       Text(
-                                        'Try adjusting your filters or date',
+                                        'TRANSACTION HISTORY',
                                         style: TextStyle(
-                                          fontSize: Responsive.getBodyFontSize(context),
-                                          color: mutedTextColor,
+                                          fontSize: Responsive.getTitleFontSize(context),
+                                          fontWeight: FontWeight.bold,
+                                          color: primaryColor,
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-                              )
-                            else
-                              ListView.builder(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                itemCount: _filteredTransactions.length,
-                                itemBuilder: (context, index) {
-                                  final transaction = _filteredTransactions[index];
-                                  return _buildTransactionCard(
-                                    transaction, 
-                                    primaryColor, 
-                                    context, 
-                                    isMobile,
-                                    isDarkMode: isDarkMode,
-                                    cardColor: cardColor,
-                                    textColor: textColor,
-                                    mutedTextColor: mutedTextColor,
-                                  );
-                                },
+                                  // Total transactions indicator with collapse button
+                                  ValueListenableBuilder<bool>(
+                                    valueListenable: _allCollapsed,
+                                    builder: (context, allCollapsed, child) {
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: primaryColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(color: primaryColor.withOpacity(0.3)),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              'Total: ${_filteredTransactions.length}',
+                                              style: TextStyle(
+                                                fontSize: Responsive.getBodyFontSize(context),
+                                                color: primaryColor,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            // Collapse All Button
+                                            GestureDetector(
+                                              onTap: _toggleCollapseAll,
+                                              child: Container(
+                                                padding: const EdgeInsets.all(4),
+                                                decoration: BoxDecoration(
+                                                  color: allCollapsed ? primaryColor.withOpacity(0.2) : Colors.transparent,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Icon(
+                                                  allCollapsed ? Icons.expand_more : Icons.expand_less,
+                                                  size: 16,
+                                                  color: primaryColor,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
                               ),
-                          ],
+                              const SizedBox(height: 16),
+                              
+                              if (_isLoadingTransactions)
+                                _buildSkeletonTransactions(isDarkMode, mutedTextColor, context)
+                              else if (_filteredTransactions.isEmpty)
+                                Container(
+                                  constraints: const BoxConstraints(
+                                    minHeight: 150,
+                                  ),
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.receipt_long,
+                                          size: 60,
+                                          color: mutedTextColor,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'No transactions found',
+                                          style: TextStyle(
+                                            fontSize: Responsive.getBodyFontSize(context),
+                                            color: mutedTextColor,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Try adjusting your filters or time range',
+                                          style: TextStyle(
+                                            fontSize: Responsive.getBodyFontSize(context),
+                                            color: mutedTextColor,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              else
+                                ValueListenableBuilder<Map<String, bool>>(
+                                  valueListenable: _expandedState,
+                                  builder: (context, expandedState, child) {
+                                    return Column(
+                                      children: _filteredTransactions.map((transaction) {
+                                        final isExpanded = expandedState[transaction.id] ?? false;
+                                        return TransactionCard(
+                                          key: ValueKey(transaction.id),
+                                          transaction: transaction,
+                                          onPrintReceipt: () => _generateReceiptPDF(transaction),
+                                          onMarkComplete: () => _markAsComplete(transaction),
+                                          onCancelOrder: () => _cancelOrder(transaction),
+                                          onPartialPayment: (amount) => _handlePartialPayment(transaction, amount),
+                                          showActions: true,
+                                          isExpanded: isExpanded,
+                                          onExpansionChanged: (expanded) {
+                                            // Update the expanded state in the notifier
+                                            final newState = Map<String, bool>.from(expandedState);
+                                            newState[transaction.id] = expanded;
+                                            _expandedState.value = newState;
+                                          },
+                                          primaryColor: primaryColor,
+                                        );
+                                      }).toList(),
+                                    );
+                                  },
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          );
-        },
-      ),
+
+              // Back to Top Button
+              if (_showBackToTopButton)
+                Positioned(
+                  bottom: 20,
+                  right: 20,
+                  child: FloatingActionButton(
+                    onPressed: _scrollToTop,
+                    backgroundColor: primaryColor,
+                    foregroundColor: Colors.white,
+                    elevation: 4,
+                    child: const Icon(Icons.arrow_upward),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        // ADD TOP LOADING INDICATOR (like Facebook) - SIMILAR TO POS TRANSACTION
+        if (_isLoadingStats || _isLoadingTransactions)
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: TopLoadingIndicator(),
+          ),
+      ],
     );
   }
 
@@ -1051,7 +1615,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
             ],
           ),
         ),
-      ),
+      )
     );
   }
 
@@ -1199,7 +1763,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Header with icon
+              // Header with icon (removed refresh button)
               Row(
                 children: [
                   Container(
@@ -1225,6 +1789,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                       ),
                     ),
                   ),
+                  // Removed: IconButton for manual refresh
                 ],
               ),
               
@@ -1250,7 +1815,7 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                   SizedBox(
                     width: double.infinity,
                     child: Text(
-                      'TRANSACTION STATS',
+                      '${_selectedTimeFilter.toUpperCase()} STATS',
                       style: TextStyle(
                         fontSize: Responsive.getSubtitleFontSize(context),
                         fontWeight: FontWeight.bold,
@@ -1269,34 +1834,34 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
                     centerTitle: true,
                     cards: [
                       _buildStatCard(
-                        "Today's Sales",
-                        "₱${_todaySales.toStringAsFixed(2)}",
+                        "$_selectedTimeFilter Sales",
+                        "₱${_filteredSales.toStringAsFixed(2)}",
                         Icons.attach_money,
                         Colors.green,
                         context,
                         isDarkMode: isDarkMode,
                       ),
                       _buildStatCard(
-                        "Today's Transactions",
-                        "$_todayTransactions",
+                        "$_selectedTimeFilter Transactions",
+                        "$_filteredTransactionsCount",
                         Icons.receipt,
                         Colors.blue,
                         context,
                         isDarkMode: isDarkMode,
                       ),
                       _buildStatCard(
-                        "Weekly Sales",
-                        "₱${_weeklySales.toStringAsFixed(2)}",
-                        Icons.trending_up,
+                        "Partial Orders",
+                        "$_pendingTransactionsCount",
+                        Icons.pending,
                         Colors.orange,
                         context,
                         isDarkMode: isDarkMode,
                       ),
                       _buildStatCard(
-                        "Pending",
-                        "$_pendingTransactions",
-                        Icons.pending,
-                        Colors.red,
+                        "Avg. Sale",
+                        "₱${_filteredTransactionsCount > 0 ? (_filteredSales / _filteredTransactionsCount).toStringAsFixed(2) : '0.00'}",
+                        Icons.trending_up,
+                        Colors.purple,
                         context,
                         isDarkMode: isDarkMode,
                       ),
@@ -1362,402 +1927,6 @@ class _TransactionMonitoringState extends State<TransactionMonitoring> with Sett
           ),
         ],
       ),
-    );
-  }
-  
-  Widget _buildTransactionCard(TransactionModel transaction, Color primaryColor, BuildContext context, bool isMobile, {
-    bool isDarkMode = false,
-    Color? cardColor,
-    Color? textColor,
-    Color? mutedTextColor,
-  }) {
-    final innerCardColor = isDarkMode ? Colors.grey.shade800 : Colors.white;
-    
-    return Card(
-      elevation: isDarkMode ? 1 : 2,
-      margin: EdgeInsets.only(bottom: Responsive.getPaddingSize(context)),
-      color: innerCardColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
-          width: 1,
-        ),
-      ),
-      child: Padding(
-        padding: Responsive.getCardPadding(context),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        // Use displayTransactionNumber instead of transactionNumber
-                        transaction.displayTransactionNumber,
-                        style: TextStyle(
-                          fontSize: Responsive.getSubtitleFontSize(context),
-                          fontWeight: FontWeight.bold,
-                          color: primaryColor,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.access_time,
-                            size: 12,
-                            color: mutedTextColor,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${transaction.formattedTime}',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: mutedTextColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                _buildStatusChip(transaction.status, isDarkMode: isDarkMode),
-              ],
-            ),
-            
-            const SizedBox(height: 8),
-            
-            Row(
-              children: [
-                Icon(
-                  Icons.person,
-                  size: Responsive.getIconSize(context, multiplier: 0.8),
-                  color: mutedTextColor,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        transaction.customerName,
-                        style: TextStyle(
-                          fontSize: Responsive.getBodyFontSize(context),
-                          fontWeight: FontWeight.bold,
-                          color: textColor,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (transaction.customerPhone.isNotEmpty && transaction.customerPhone != '-')
-                        Text(
-                          transaction.customerPhone,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: mutedTextColor,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 8),
-            
-            Row(
-              children: [
-                Icon(
-                  Icons.calendar_today,
-                  size: Responsive.getIconSize(context, multiplier: 0.7),
-                  color: mutedTextColor,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  transaction.formattedDate,
-                  style: TextStyle(
-                    fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
-                    color: mutedTextColor,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Icon(
-                  Icons.payment,
-                  size: Responsive.getIconSize(context, multiplier: 0.7),
-                  color: mutedTextColor,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  transaction.paymentMethod,
-                  style: TextStyle(
-                    fontSize: Responsive.getFontSize(context, mobile: 10, tablet: 11, desktop: 12),
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                  ),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 12),
-            
-            // Transaction Items Summary
-            if (transaction.items.isNotEmpty) ...[
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Items (${transaction.items.length}):',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: mutedTextColor,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    ...transaction.items.take(2).map((item) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Row(
-                        children: [
-                          Text(
-                            '• ',
-                            style: TextStyle(color: mutedTextColor),
-                          ),
-                          Expanded(
-                            child: Text(
-                              '${item.productName} x${item.quantity}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: mutedTextColor,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )),
-                    if (transaction.items.length > 2)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          '+ ${transaction.items.length - 2} more items',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: mutedTextColor,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Total Amount',
-                      style: TextStyle(
-                        fontSize: Responsive.getFontSize(context, mobile: 11, tablet: 12, desktop: 13),
-                        color: mutedTextColor,
-                      ),
-                    ),
-                    Text(
-                      '₱${transaction.totalAmount.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: Responsive.getSubtitleFontSize(context),
-                        fontWeight: FontWeight.bold,
-                        color: primaryColor,
-                      ),
-                    ),
-                  ],
-                ),
-                
-                if (!isMobile) ...[
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.receipt, size: 20, color: primaryColor),
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Receipt ${transaction.transactionNumber} sent to printer'),
-                              backgroundColor: Colors.blue,
-                            ),
-                          );
-                        },
-                        tooltip: 'Print Receipt',
-                      ),
-                      if (transaction.status == 'Pending')
-                        IconButton(
-                          icon: const Icon(Icons.check_circle, size: 20, color: Colors.green),
-                          onPressed: () => _markAsComplete(transaction),
-                          tooltip: 'Mark as Complete',
-                        ),
-                      if (transaction.status == 'Completed')
-                        IconButton(
-                          icon: const Icon(Icons.refresh, size: 20, color: Colors.orange),
-                          onPressed: () {
-                            // TODO: Implement refund functionality
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Refund functionality coming soon'),
-                                backgroundColor: Colors.orange,
-                              ),
-                            );
-                          },
-                          tooltip: 'Refund Transaction',
-                        ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-            
-            // Action Buttons for Mobile
-            if (isMobile) ...[
-              const SizedBox(height: 12),
-              const Divider(height: 1),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Receipt ${transaction.transactionNumber} sent to printer'),
-                            backgroundColor: Colors.blue,
-                          ),
-                        );
-                      },
-                      icon: Icon(Icons.receipt, size: 16, color: primaryColor),
-                      label: Text(
-                        'Print',
-                        style: TextStyle(color: primaryColor),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        side: BorderSide(color: primaryColor),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (transaction.status == 'Pending')
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => _markAsComplete(transaction),
-                        icon: Icon(Icons.check_circle, size: 16, color: Colors.white),
-                        label: Text('Complete', style: TextStyle(color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                        ),
-                      ),
-                    ),
-                  if (transaction.status == 'Completed')
-                    const SizedBox(width: 8),
-                  if (transaction.status == 'Completed')
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          // TODO: Implement refund functionality
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Refund functionality coming soon'),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
-                        },
-                        icon: Icon(Icons.refresh, size: 16, color: Colors.orange),
-                        label: const Text(
-                          'Refund',
-                          style: TextStyle(color: Colors.orange),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          side: const BorderSide(color: Colors.orange),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatusChip(String status, {bool isDarkMode = false}) {
-    Color chipColor;
-    Color textColor;
-    IconData? icon;
-    
-    switch (status.toLowerCase()) {
-      case 'completed':
-        chipColor = isDarkMode ? Colors.green.shade900 : Colors.green.shade100;
-        textColor = isDarkMode ? Colors.green.shade200 : Colors.green.shade800;
-        icon = Icons.check_circle;
-        break;
-      case 'pending':
-        chipColor = isDarkMode ? Colors.orange.shade900 : Colors.orange.shade100;
-        textColor = isDarkMode ? Colors.orange.shade200 : Colors.orange.shade800;
-        icon = Icons.pending;
-        break;
-      case 'cancelled':
-        chipColor = isDarkMode ? Colors.red.shade900 : Colors.red.shade100;
-        textColor = isDarkMode ? Colors.red.shade200 : Colors.red.shade800;
-        icon = Icons.cancel;
-        break;
-      case 'refunded':
-        chipColor = isDarkMode ? Colors.purple.shade900 : Colors.purple.shade100;
-        textColor = isDarkMode ? Colors.purple.shade200 : Colors.purple.shade800;
-        icon = Icons.refresh;
-        break;
-      default:
-        chipColor = isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100;
-        textColor = isDarkMode ? Colors.grey.shade300 : Colors.grey.shade800;
-        icon = Icons.info;
-    }
-    
-    return Chip(
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: textColor),
-          const SizedBox(width: 4),
-          Text(
-            status,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-            ),
-          ),
-        ],
-      ),
-      backgroundColor: chipColor,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      visualDensity: VisualDensity.compact,
     );
   }
 }
